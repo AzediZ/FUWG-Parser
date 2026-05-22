@@ -179,7 +179,7 @@ async function updateExport() {
   const diagnostics = {
     generatedAt: new Date().toISOString(),
     source: 'HOI4 Game Log Parser Web',
-    parserVersion: 'v19-province-overrides',
+    parserVersion: 'v21-province-overrides',
     ...timeline.diagnostics,
     dateOverride,
     parsedFiles: parseDiagnostics.filter(d => d.stage === 'parsed').map(d => d.file),
@@ -274,7 +274,7 @@ els.latestDateOverride.addEventListener('change', () => {
 });
 els.fileFallback.addEventListener('change', async (e) => {
   els.log.textContent = '';
-  log('[INFO] Version v19 province-overrides test loaded.');
+  log('[INFO] Version v21 province-overrides accepted loaded.');
   fallbackFiles = filterAutosaveFiles([...e.target.files].filter(f => /\.hoi4$/i.test(f.name)), 'folder fallback').sort((a,b)=>a.name.localeCompare(b.name));
   dirHandle = null;
   seen.clear();
@@ -290,7 +290,7 @@ els.fileFallback.addEventListener('change', async (e) => {
 
 els.folderFallback.addEventListener('change', async (e) => {
   els.log.textContent = '';
-  log('[INFO] Version v19 province-overrides test loaded.');
+  log('[INFO] Version v21 province-overrides accepted loaded.');
   fallbackFiles = filterAutosaveFiles([...e.target.files].filter(f => /\.hoi4$/i.test(f.name)), 'folder fallback').sort((a,b)=>a.name.localeCompare(b.name));
   dirHandle = null;
   seen.clear();

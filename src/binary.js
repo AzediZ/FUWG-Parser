@@ -287,7 +287,7 @@ export function parseBinaryHoi4Snapshot(bytes, fileName = '', log = () => {}) {
       dateDays,
       dateSource,
       dateOffset,
-      parserVersion: 'v19-province-experimental',
+      parserVersion: 'v21-province-overrides',
       dateBase: dateDays !== null ? 'TOKEN_10314_save_menu_clock_60759361_plus_24h_per_day' : null,
       dateCandidates: dateCandidates.slice(0, 120),
       headerTrace: headerTrace.slice(0, 180),
