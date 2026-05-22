@@ -93,7 +93,7 @@ function decorateMelted(filestring) {
   return filestring;
 }
 
-export function inferStatesFromMeltedBinary(text, fileName = '') {
+export function inferStatesFromMeltedBinary(text, fileName = '', dateHint = null) {
   const blocks = iterNumberedBlocksLoose(text);
   const counts = new Map();
   const perBlock = [];
@@ -125,7 +125,7 @@ export function inferStatesFromMeltedBinary(text, fileName = '') {
   if (stateCount < 30) {
     return { ok:false, reason:'binary_not_enough_inferred_states', diagnostics:{ numberedBlocks: blocks.length, chosenKey:key, chosenCount:count, inferredStates:stateCount, candidates:candidates.slice(0,10).map(([key,count])=>({key,count})) } };
   }
-  return { ok:true, date: parseDateFromName(fileName), fileName, states, binaryFallback:true, diagnostics:{ numberedBlocks: blocks.length, chosenKey:key, chosenCount:count, inferredStates:stateCount, candidates:candidates.slice(0,10).map(([key,count])=>({key,count})) } };
+  return { ok:true, date: dateHint || parseDateFromName(fileName), fileName, states, binaryFallback:true, diagnostics:{ numberedBlocks: blocks.length, chosenKey:key, chosenCount:count, inferredStates:stateCount, candidates:candidates.slice(0,10).map(([key,count])=>({key,count})) } };
 }
 
 function iterNumberedBlocksLoose(text) {

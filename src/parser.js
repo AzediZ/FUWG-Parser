@@ -9,6 +9,7 @@ function logSafeTextSample(text) {
 export async function readHoi4SaveFile(file, log = () => {}) {
   const buffer = await file.arrayBuffer();
   const bytes = new Uint8Array(buffer);
+  const dateHint = extractDateHintFromBytes(bytes, file.name);
   const magic = bytes.length >= 4 ? String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]) : '';
 
   // Most non-ironman HOI4 saves are ZIP containers with entries such as gamestate/meta.
@@ -26,12 +27,13 @@ export async function readHoi4SaveFile(file, log = () => {}) {
       if (!preferred) return { ok: false, reason: `zip_no_gamestate entries=${names.join(',')}` };
       const inner = entries[preferred];
       const text = decoder.decode(inner);
-      if (looksLikeTextSave(text)) return { ok: true, text, source: 'zip:' + preferred };
+      const zipDateHint = extractDateHintFromZipEntries(entries, file.name) || dateHint;
+      if (looksLikeTextSave(text)) return { ok: true, text, source: 'zip:' + preferred, dateHint: zipDateHint };
 
       // Normal HOI4 saves can be binary data inside the .hoi4 ZIP. Try the experimental binary reader.
       const melted = meltBinaryHoi4(inner, log);
       if (melted.text && melted.text.length > 100) {
-        return { ok: true, text: melted.text, source: 'zip-binary:' + preferred, binaryDiagnostics: melted.diagnostics };
+        return { ok: true, text: melted.text, source: 'zip-binary:' + preferred, binaryDiagnostics: { ...melted.diagnostics, dateHint: zipDateHint }, dateHint: zipDateHint };
       }
       return { ok: false, reason: `zip_gamestate_not_readable entry=${preferred} sample=${logSafeTextSample(text)}` };
     } catch (err) {
@@ -41,16 +43,39 @@ export async function readHoi4SaveFile(file, log = () => {}) {
   }
 
   const text = decoder.decode(bytes);
-  if (looksLikeTextSave(text)) return { ok: true, text, source: 'plain' };
+  if (looksLikeTextSave(text)) return { ok: true, text, source: 'plain', dateHint };
 
   // Try direct binary HOI4 save melting.
   const melted = meltBinaryHoi4(bytes, log);
   if (melted.text && melted.text.length > 100) {
-    return { ok: true, text: melted.text, source: 'binary', binaryDiagnostics: melted.diagnostics };
+    return { ok: true, text: melted.text, source: 'binary', binaryDiagnostics: { ...melted.diagnostics, dateHint }, dateHint };
   }
 
   const nulCount = bytes.slice(0, Math.min(bytes.length, 4096)).filter(b => b === 0).length;
   return { ok: false, reason: nulCount > 8 ? 'binary_save_unreadable' : 'not_recognised_as_text_save' };
+}
+
+function extractDateHintFromBytes(bytes, fileName = '') {
+  const fromName = parseDate('', fileName);
+  if (fromName) return fromName;
+  // Some binary/container saves still expose the date in plain ASCII metadata.
+  const sample = decoder.decode(bytes.slice(0, Math.min(bytes.length, 1024 * 1024 * 2)));
+  return parseDate(sample, fileName);
+}
+
+function extractDateHintFromZipEntries(entries, fileName = '') {
+  const fromName = parseDate('', fileName);
+  if (fromName) return fromName;
+  const names = Object.keys(entries);
+  const likelyMeta = names.filter(n => /meta|descriptor|header/i.test(n));
+  for (const name of [...likelyMeta, ...names]) {
+    try {
+      const sample = decoder.decode(entries[name].slice(0, Math.min(entries[name].length, 1024 * 1024)));
+      const found = parseDate(sample, fileName);
+      if (found) return found;
+    } catch {}
+  }
+  return null;
 }
 
 function looksLikeTextSave(text) {
@@ -114,11 +139,11 @@ function parseDate(text, fallbackName = '') {
   return null;
 }
 
-export function parseSnapshot(text, fileName = '') {
-  const date = parseDate(text, fileName);
+export function parseSnapshot(text, fileName = '', dateHint = null) {
+  const date = parseDate(text, fileName) || dateHint || null;
   const statesBlock = findBlock(text, 'states');
   if (!statesBlock) {
-    const inferred = inferStatesFromMeltedBinary(text, fileName);
+    const inferred = inferStatesFromMeltedBinary(text, fileName, date);
     if (inferred.ok) return inferred;
     return { ok: false, reason: inferred.reason || 'no_states_block', diagnostics: inferred.diagnostics };
   }

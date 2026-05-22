@@ -6,6 +6,7 @@ const els = {
   parseBtn: document.getElementById('parseBtn'),
   watchBtn: document.getElementById('watchBtn'),
   downloadBtn: document.getElementById('downloadBtn'),
+  watchNewOnlyBtn: document.getElementById('watchNewOnlyBtn'),
   fileFallback: document.getElementById('fileFallback'),
   pollSeconds: document.getElementById('pollSeconds'),
   log: document.getElementById('log'),
@@ -82,7 +83,7 @@ async function parseFiles(files, onlyChanged = false) {
       log(`[WARN] Skipped ${file.name} (${read.reason})`);
       continue;
     }
-    const snap = parseSnapshot(read.text, file.name);
+    const snap = parseSnapshot(read.text, file.name, read.dateHint || null);
     if (!snap.ok) {
       skipped++;
       parseDiagnostics.push({ file: file.name, stage: 'parse', reason: snap.reason, source: read.source, diagnostics: snap.diagnostics, binaryDiagnostics: read.binaryDiagnostics });
@@ -91,7 +92,7 @@ async function parseFiles(files, onlyChanged = false) {
       continue;
     }
     parsed.set(file.name, snap);
-    parseDiagnostics.push({ file: file.name, stage: 'parsed', source: read.source, states: Object.keys(snap.states).length, binaryFallback: !!snap.binaryFallback, diagnostics: snap.diagnostics, binaryDiagnostics: read.binaryDiagnostics });
+    parseDiagnostics.push({ file: file.name, stage: 'parsed', source: read.source, date: snap.date || null, states: Object.keys(snap.states).length, binaryFallback: !!snap.binaryFallback, diagnostics: snap.diagnostics, binaryDiagnostics: read.binaryDiagnostics });
     log(`[OK] Parsed ${file.name}${snap.date ? ' -> ' + snap.date : ''} (${Object.keys(snap.states).length} states, source=${read.source}${snap.binaryFallback ? ', inferred binary state blocks' : ''})`);
   }
 
@@ -136,6 +137,16 @@ async function tickWatch() {
   await parseFiles(files, true);
 }
 
+async function markExistingAsSeen() {
+  const files = await collectFilesFromFolder();
+  els.saveCount.textContent = files.length;
+  for (const file of files) {
+    const sig = `${file.name}:${file.size}:${file.lastModified}`;
+    seen.set(file.name, sig);
+  }
+  log(`[INFO] Ignoring ${files.length} existing save file(s). New/changed saves will be parsed from now on.`);
+}
+
 function toggleWatch() {
   if (watchTimer) {
     clearInterval(watchTimer);
@@ -165,6 +176,10 @@ function downloadZip() {
 els.selectFolderBtn.addEventListener('click', () => selectFolder().catch(e => log('[ERROR] ' + e.message)));
 els.parseBtn.addEventListener('click', () => parseNow().catch(e => log('[ERROR] ' + e.message)));
 els.watchBtn.addEventListener('click', () => toggleWatch());
+els.watchNewOnlyBtn.addEventListener('click', async () => {
+  await markExistingAsSeen();
+  if (!watchTimer) toggleWatch();
+});
 els.downloadBtn.addEventListener('click', downloadZip);
 els.fileFallback.addEventListener('change', async (e) => {
   els.log.textContent = '';

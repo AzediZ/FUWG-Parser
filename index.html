@@ -17,13 +17,14 @@
       <h2>Save folder location</h2>
       <p>Typical Windows folder:</p>
       <code>Documents\Paradox Interactive\Hearts of Iron IV\save games</code>
-      <p class="muted">The browser can only read files/folders you manually select. Normal .hoi4 binary saves are attempted using the experimental local binary fallback; no change to HOI4 save settings is required.</p>
+      <p class="muted">The browser can only read files/folders you manually select. Normal .hoi4 binary saves are attempted using the experimental local binary fallback; no change to HOI4 save settings is required. If processing old saves is slow, use “Watch new saves only” after selecting the folder.</p>
     </section>
 
     <section class="card controls">
       <button id="selectFolderBtn">Select save folder</button>
       <button id="parseBtn" disabled>Parse selected saves</button>
       <button id="watchBtn" disabled>Start watching</button>
+      <button id="watchNewOnlyBtn" disabled>Watch new saves only</button>
       <button id="downloadBtn" disabled>Download gamelog export.zip</button>
       <label class="interval">Check every
         <input id="pollSeconds" type="number" min="2" max="60" value="5" /> seconds
