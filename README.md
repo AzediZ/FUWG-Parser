@@ -58,3 +58,8 @@ Fixes binary save date extraction by preserving the first top-level HOI4 date to
 ## v12 note
 
 Normal `.hoi4` binary save date conversion now uses the inferred HOI4 binary date epoch `1935-12-10`, fixing the previous +22 day date offset seen in early-1936 test runs.
+
+
+## v14 note
+
+Adds save-header date diagnostics. The export now lists candidate in-save date fields from the `.hoi4` header so the parser can be aligned with the same date the HOI4 save menu displays, instead of relying on the current TOKEN_13954 guess.

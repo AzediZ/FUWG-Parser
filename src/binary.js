@@ -5,10 +5,54 @@
 // and chooses the assignment key with the most distinct state ids.
 
 function dateFromGameDays(days) {
-  if (!Number.isFinite(days) || days <= 0 || days > 20000) return null;
-  const start = Date.UTC(1935, 11, 10);
+  if (!Number.isFinite(days) || days < 0 || days > 20000) return null;
+  const start = Date.UTC(1936, 0, 1);
   const d = new Date(start + days * 86400000);
   return d.toISOString().slice(0, 10);
+}
+
+function headerDateCandidates(bytes, maxBytes = 8192) {
+  const out = [];
+  let pos = bytes.length >= 7 && String.fromCharCode(...bytes.slice(0, 7)) === 'HOI4bin' ? 7 : 0;
+  let pending = null;
+  let afterEquals = null;
+  let depth = 0;
+  while (pos + 2 <= bytes.length && pos < Math.min(bytes.length, maxBytes)) {
+    const off = pos;
+    const token = u16(bytes, pos); pos += 2;
+    let kind = 'key';
+    let value = null;
+    if (token === 12) { if (pos + 4 > bytes.length) break; kind = 'number'; value = i32(bytes, pos); pos += 4; }
+    else if (token === 20) { if (pos + 4 > bytes.length) break; kind = 'number'; value = u32(bytes, pos); pos += 4; }
+    else if (token === 359 || token === 668) { if (pos + 8 > bytes.length) break; kind = 'number'; value = readI64AsNumber(bytes, pos, token === 668); pos += 8; }
+    else if (token === 15 || token === 23) {
+      if (pos + 2 > bytes.length) break;
+      const len = u16(bytes, pos); pos += 2;
+      if (len < 0 || len > 65535 || pos + len > bytes.length) break;
+      kind = 'string'; value = decodeUtf8(bytes, pos, len); pos += len;
+    }
+    else if (token === 14) { if (pos >= bytes.length) break; kind = 'bool'; value = bytes[pos++]; }
+    else if (token === 1) kind = 'equals';
+    else if (token === 3) kind = 'open';
+    else if (token === 4) kind = 'close';
+
+    if (kind === 'equals') { afterEquals = pending; continue; }
+    if (kind === 'open') { depth++; afterEquals = null; continue; }
+    if (kind === 'close') { depth = Math.max(0, depth - 1); continue; }
+    if (kind === 'number' && afterEquals && Number.isFinite(value) && value >= 0 && value <= 20000) {
+      out.push({
+        key: `TOKEN_${afterEquals.token}`,
+        value,
+        date: dateFromGameDays(value),
+        valueOffset: off,
+        keyOffset: afterEquals.off,
+        depth
+      });
+      afterEquals = null;
+    }
+    if (kind === 'key' || kind === 'number' || kind === 'string') pending = { kind, token, value, off };
+  }
+  return out;
 }
 
 export function parseBinaryHoi4Snapshot(bytes, fileName = '', log = () => {}) {
@@ -20,8 +64,10 @@ export function parseBinaryHoi4Snapshot(bytes, fileName = '', log = () => {}) {
   const candidates = new Map(); // key token -> Map(state id -> controller tag)
   let dateDays = null;
   let dateSource = null;
+  let dateOffset = null;
   let tokensRead = 0;
   let hardStops = 0;
+  const dateCandidates = headerDateCandidates(bytes);
 
   const putCandidate = (key, stateId, tag) => {
     if (!candidates.has(key)) candidates.set(key, new Map());
@@ -82,12 +128,15 @@ export function parseBinaryHoi4Snapshot(bytes, fileName = '', log = () => {}) {
     }
 
     if (kind === 'number' && afterEquals && afterEquals.token === 13954 && value > 0 && value < 20000) {
-      // In normal HOI4bin saves TOKEN_13954 appears near the top of the file as
-      // the actual game date, stored as days since the HOI4 binary epoch, currently inferred as 1935-12-10. The same token can
-      // appear later inside unrelated nested data, so keep the first valid hit only.
-      if (dateDays === null) {
+      // In observed normal HOI4bin saves, the real game date is a TOKEN_13954
+      // assignment in the small top header area, normally around byte 204.
+      // The same token can appear later inside other structures; do not use those
+      // for the displayed/exported snapshot date.
+      const looksLikeHeaderDate = stack.length === 0 && afterEquals.off >= 0 && afterEquals.off < 4096;
+      if (dateDays === null && looksLikeHeaderDate) {
         dateDays = value;
-        dateSource = stack.length <= 1 ? 'TOKEN_13954_first_top_level' : 'TOKEN_13954_first_seen';
+        dateOffset = afterEquals.off;
+        dateSource = 'TOKEN_13954_header';
       }
       afterEquals = null;
     }
@@ -113,7 +162,7 @@ export function parseBinaryHoi4Snapshot(bytes, fileName = '', log = () => {}) {
 
   const best = ranked[0];
   if (!best) {
-    return { ok: false, reason: 'binary_fast_no_state_candidates', diagnostics: { tokensRead, bytesRead: pos, bytesTotal: bytes.length, hardStops, candidates: [] } };
+    return { ok: false, reason: 'binary_fast_no_state_candidates', diagnostics: { tokensRead, bytesRead: pos, bytesTotal: bytes.length, hardStops, dateCandidates: dateCandidates.slice(0,80), candidates: [] } };
   }
 
   const states = {};
@@ -136,7 +185,10 @@ export function parseBinaryHoi4Snapshot(bytes, fileName = '', log = () => {}) {
       inferredStates: Object.keys(states).length,
       dateDays,
       dateSource,
-      dateBase: dateDays ? '1935-12-10_plus_days' : null,
+      dateOffset,
+      parserVersion: 'v14',
+      dateBase: dateDays !== null ? '1936-01-01_plus_days' : null,
+      dateCandidates: dateCandidates.slice(0, 80),
       candidates: ranked.slice(0, 8).map(x => ({ key: `TOKEN_${x.key}`, count: x.count }))
     }
   };
@@ -188,6 +240,7 @@ export function meltBinaryHoi4(bytes, log = () => {}) {
   const unknownCounts = new Map();
   let tokensRead = 0;
   let hardStops = 0;
+  const dateCandidates = headerDateCandidates(bytes);
 
   while (pos + 2 <= bytes.length) {
     const number = u16(bytes, pos); pos += 2; tokensRead++;
