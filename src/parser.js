@@ -1,4 +1,9 @@
-export const PARSER_VERSION = 'web-gamelog-parser-fixed-state-controller-v1';
+export const PARSER_VERSION = 'web-gamelog-parser-fixed-state-controller-v2-zip-saves';
+
+const textDecoder = new TextDecoder('utf-8', { fatal: false });
+
+function u16(view, offset) { return view.getUint16(offset, true); }
+function u32(view, offset) { return view.getUint32(offset, true); }
 
 export function parseDateFromText(text, fileName = '') {
   const saveDate = text.match(/(?:^|\s)date\s*=\s*"?(\d{4})\.(\d{1,2})\.(\d{1,2})"?/);
@@ -10,14 +15,125 @@ export function parseDateFromText(text, fileName = '') {
   return null;
 }
 
-export function looksCompressedOrBinary(text) {
-  if (text.startsWith('PK\u0003\u0004')) return true;
+function bufferStartsWithZip(buffer) {
+  if (buffer.byteLength < 4) return false;
+  const view = new DataView(buffer);
+  return u32(view, 0) === 0x04034b50;
+}
+
+export function looksBinaryText(text) {
   const sample = text.slice(0, 5000);
   let nul = 0;
   for (let i = 0; i < sample.length; i++) {
     if (sample.charCodeAt(i) === 0) nul++;
   }
   return nul > 5;
+}
+
+async function inflateRaw(bytes) {
+  if (!('DecompressionStream' in globalThis)) {
+    throw new Error('This browser cannot decompress zipped saves. Use current Chrome/Edge, or disable binary/compressed saves in HOI4 before hosting.');
+  }
+
+  const tryFormats = ['deflate-raw', 'deflate'];
+  let lastError = null;
+
+  for (const format of tryFormats) {
+    try {
+      const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream(format));
+      const result = await new Response(stream).arrayBuffer();
+      return new Uint8Array(result);
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  throw lastError || new Error('Unable to decompress zip entry.');
+}
+
+function findEndOfCentralDirectory(view) {
+  const min = Math.max(0, view.byteLength - 0xffff - 22);
+  for (let i = view.byteLength - 22; i >= min; i--) {
+    if (u32(view, i) === 0x06054b50) return i;
+  }
+  return -1;
+}
+
+async function unzipTextEntries(buffer) {
+  const view = new DataView(buffer);
+  const eocd = findEndOfCentralDirectory(view);
+  if (eocd < 0) throw new Error('Zip save has no central directory.');
+
+  const entryCount = u16(view, eocd + 10);
+  const centralOffset = u32(view, eocd + 16);
+  let offset = centralOffset;
+  const entries = [];
+
+  for (let i = 0; i < entryCount && offset < view.byteLength; i++) {
+    if (u32(view, offset) !== 0x02014b50) break;
+
+    const method = u16(view, offset + 10);
+    const compressedSize = u32(view, offset + 20);
+    const uncompressedSize = u32(view, offset + 24);
+    const nameLen = u16(view, offset + 28);
+    const extraLen = u16(view, offset + 30);
+    const commentLen = u16(view, offset + 32);
+    const localOffset = u32(view, offset + 42);
+
+    const nameBytes = new Uint8Array(buffer, offset + 46, nameLen);
+    const name = textDecoder.decode(nameBytes);
+
+    entries.push({ name, method, compressedSize, uncompressedSize, localOffset });
+    offset += 46 + nameLen + extraLen + commentLen;
+  }
+
+  const output = [];
+
+  for (const entry of entries) {
+    if (entry.name.endsWith('/')) continue;
+    if (entry.localOffset + 30 > view.byteLength) continue;
+    if (u32(view, entry.localOffset) !== 0x04034b50) continue;
+
+    const localNameLen = u16(view, entry.localOffset + 26);
+    const localExtraLen = u16(view, entry.localOffset + 28);
+    const dataStart = entry.localOffset + 30 + localNameLen + localExtraLen;
+    const dataEnd = dataStart + entry.compressedSize;
+    if (dataEnd > buffer.byteLength) continue;
+
+    const compressed = new Uint8Array(buffer, dataStart, entry.compressedSize);
+    let data;
+    if (entry.method === 0) {
+      data = compressed;
+    } else if (entry.method === 8) {
+      data = await inflateRaw(compressed);
+    } else {
+      continue;
+    }
+
+    output.push({ name: entry.name, text: textDecoder.decode(data), uncompressedSize: entry.uncompressedSize });
+  }
+
+  return output;
+}
+
+async function readSaveText(file) {
+  const buffer = await file.arrayBuffer();
+
+  if (bufferStartsWithZip(buffer)) {
+    const entries = await unzipTextEntries(buffer);
+    const gamestate = entries.find(e => e.name.toLowerCase() === 'gamestate')
+      || entries.find(e => e.name.toLowerCase().endsWith('/gamestate'))
+      || entries.find(e => /gamestate/i.test(e.name))
+      || entries.sort((a, b) => b.text.length - a.text.length)[0];
+
+    if (!gamestate) return { text: '', source: 'zip', error: 'zip_no_readable_entries' };
+    if (looksBinaryText(gamestate.text)) return { text: gamestate.text, source: 'zip', error: 'binary_gamestate' };
+    return { text: gamestate.text, source: `zip:${gamestate.name}` };
+  }
+
+  const text = textDecoder.decode(new Uint8Array(buffer));
+  if (looksBinaryText(text)) return { text, source: 'plain', error: 'binary_save' };
+  return { text, source: 'plain' };
 }
 
 function findNamedBlock(text, name) {
@@ -145,6 +261,7 @@ export function postprocessSnapshots(rawSnapshots) {
     diagnostics.snapshots.push({
       date: snap.date,
       file: snap.file,
+      save_source: snap.saveSource || null,
       states_parsed_from_save: Object.keys(snap.partialStates || {}).length,
       parsed_controllers: parsedControllers,
       carried_forward_controllers: carriedForward,
@@ -156,7 +273,7 @@ export function postprocessSnapshots(rawSnapshots) {
   }
 
   if (!allIds.length) {
-    diagnostics.warnings.push('No state blocks were found. The selected saves may be compressed/binary or not text-format HOI4 saves.');
+    diagnostics.warnings.push('No state blocks were found. Check that the selected saves are not binary saves and include a readable gamestate.');
   }
 
   const compact = snapshots.map(makeCompactSnapshot);
@@ -166,19 +283,43 @@ export function postprocessSnapshots(rawSnapshots) {
 }
 
 export async function parseFileToRawSnapshot(file, path, orderIndex = 0) {
-  const text = await file.text();
-  if (looksCompressedOrBinary(text)) {
+  let read;
+  try {
+    read = await readSaveText(file);
+  } catch (err) {
     return {
       skipped: true,
-      reason: 'compressed_or_binary',
+      reason: `read_error: ${err?.message || err}`,
       file: path || file.name,
       size: file.size,
       lastModified: file.lastModified
     };
   }
 
-  const parsed = parseStateMap(text);
-  const date = parseDateFromText(text, file.name) || `unknown-${String(orderIndex + 1).padStart(4, '0')}`;
+  if (read.error) {
+    return {
+      skipped: true,
+      reason: read.error,
+      file: path || file.name,
+      size: file.size,
+      lastModified: file.lastModified,
+      saveSource: read.source
+    };
+  }
+
+  const parsed = parseStateMap(read.text);
+  if (!parsed.foundStatesBlock) {
+    return {
+      skipped: true,
+      reason: 'no_states_block',
+      file: path || file.name,
+      size: file.size,
+      lastModified: file.lastModified,
+      saveSource: read.source
+    };
+  }
+
+  const date = parseDateFromText(read.text, file.name) || `unknown-${String(orderIndex + 1).padStart(4, '0')}`;
 
   return {
     skipped: false,
@@ -188,7 +329,8 @@ export async function parseFileToRawSnapshot(file, path, orderIndex = 0) {
     foundStatesBlock: parsed.foundStatesBlock,
     totalBlocks: parsed.totalBlocks,
     size: file.size,
-    lastModified: file.lastModified
+    lastModified: file.lastModified,
+    saveSource: read.source
   };
 }
 

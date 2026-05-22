@@ -40,7 +40,7 @@
           </label>
         </div>
 
-        <p class="hint">Chrome or Edge is recommended for live folder watching. The fallback selector can parse selected files, but it cannot automatically see new autosaves until you select them again.</p>
+        <p class="hint"><strong>Save folder:</strong> usually <code>Documents/Paradox Interactive/Hearts of Iron IV/save games</code>. Chrome or Edge is recommended for live folder watching. The fallback selector can parse selected files, but it cannot automatically see new autosaves until you select them again.</p>
 
         <div class="button-row">
           <button id="parseNowBtn" type="button" disabled>Parse now</button>
@@ -81,7 +81,7 @@
         <li><code>state_controller_timeline.json</code></li>
         <li><code>parse_diagnostics.json</code></li>
       </ul>
-      <p class="hint">State-controller fix: every exported snapshot contains every discovered state. Missing controllers are carried forward from the previous snapshot; first-time unknowns become <code>NUL</code>.</p>
+      <p class="hint">State-controller fix: every exported snapshot contains every discovered state. Missing controllers are carried forward from the previous snapshot; first-time unknowns become <code>NUL</code>. Zip-compressed text saves are supported in current Chrome/Edge; fully binary saves are not readable by the browser parser.</p>
     </section>
   </main>
 
