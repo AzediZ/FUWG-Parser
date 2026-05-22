@@ -83,7 +83,7 @@ async function parseFiles(files, onlyChanged = false) {
       log(`[WARN] Skipped ${file.name} (${read.reason})`);
       continue;
     }
-    const snap = parseSnapshot(read.text, file.name, read.dateHint || null);
+    const snap = read.snapshot || parseSnapshot(read.text, file.name, read.dateHint || null);
     if (!snap.ok) {
       skipped++;
       parseDiagnostics.push({ file: file.name, stage: 'parse', reason: snap.reason, source: read.source, diagnostics: snap.diagnostics, binaryDiagnostics: read.binaryDiagnostics });
@@ -91,8 +91,9 @@ async function parseFiles(files, onlyChanged = false) {
       if (snap.diagnostics?.candidates?.length) log(`[INFO] Binary candidates: ${snap.diagnostics.candidates.slice(0,3).map(c => `${c.key}:${c.count}`).join(', ')}`);
       continue;
     }
-    parsed.set(file.name, snap);
-    parseDiagnostics.push({ file: file.name, stage: 'parsed', source: read.source, date: snap.date || null, states: Object.keys(snap.states).length, binaryFallback: !!snap.binaryFallback, diagnostics: snap.diagnostics, binaryDiagnostics: read.binaryDiagnostics });
+    const parsedKey = snap.date ? `${snap.date}:${file.name}` : sig;
+    parsed.set(parsedKey, snap);
+    parseDiagnostics.push({ file: file.name, key: parsedKey, stage: 'parsed', source: read.source, date: snap.date || null, states: Object.keys(snap.states).length, binaryFallback: !!snap.binaryFallback, diagnostics: snap.diagnostics, binaryDiagnostics: read.binaryDiagnostics });
     log(`[OK] Parsed ${file.name}${snap.date ? ' -> ' + snap.date : ''} (${Object.keys(snap.states).length} states, source=${read.source}${snap.binaryFallback ? ', inferred binary state blocks' : ''})`);
   }
 
@@ -113,7 +114,7 @@ async function updateExport() {
     generatedAt: new Date().toISOString(),
     source: 'HOI4 Game Log Parser Web',
     ...timeline.diagnostics,
-    parsedFiles: [...parsed.keys()].sort(),
+    parsedFiles: parseDiagnostics.filter(d => d.stage === 'parsed').map(d => d.file),
     parseDiagnostics
   };
   latestZipBlob = await makeExportZip({

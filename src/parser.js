@@ -1,4 +1,4 @@
-import { meltBinaryHoi4, inferStatesFromMeltedBinary } from './binary.js';
+import { meltBinaryHoi4, inferStatesFromMeltedBinary, parseBinaryHoi4Snapshot } from './binary.js';
 
 const decoder = new TextDecoder('utf-8', { fatal: false });
 
@@ -30,10 +30,14 @@ export async function readHoi4SaveFile(file, log = () => {}) {
       const zipDateHint = extractDateHintFromZipEntries(entries, file.name) || dateHint;
       if (looksLikeTextSave(text)) return { ok: true, text, source: 'zip:' + preferred, dateHint: zipDateHint };
 
-      // Normal HOI4 saves can be binary data inside the .hoi4 ZIP. Try the experimental binary reader.
+      // Normal HOI4 saves can be binary data inside the .hoi4 ZIP. Try fast binary parsing.
+      const fast = parseBinaryHoi4Snapshot(inner, file.name, log);
+      if (fast.ok) {
+        return { ok: true, snapshot: fast, text: '', source: 'zip-binary-fast:' + preferred, binaryDiagnostics: fast.diagnostics, dateHint: fast.date || zipDateHint };
+      }
       const melted = meltBinaryHoi4(inner, log);
       if (melted.text && melted.text.length > 100) {
-        return { ok: true, text: melted.text, source: 'zip-binary:' + preferred, binaryDiagnostics: { ...melted.diagnostics, dateHint: zipDateHint }, dateHint: zipDateHint };
+        return { ok: true, text: melted.text, source: 'zip-binary-melt:' + preferred, binaryDiagnostics: { ...melted.diagnostics, fastDiagnostics: fast.diagnostics, dateHint: zipDateHint }, dateHint: zipDateHint };
       }
       return { ok: false, reason: `zip_gamestate_not_readable entry=${preferred} sample=${logSafeTextSample(text)}` };
     } catch (err) {
@@ -45,10 +49,16 @@ export async function readHoi4SaveFile(file, log = () => {}) {
   const text = decoder.decode(bytes);
   if (looksLikeTextSave(text)) return { ok: true, text, source: 'plain', dateHint };
 
-  // Try direct binary HOI4 save melting.
+  // Try direct normal .hoi4 binary save parsing first.
+  const fast = parseBinaryHoi4Snapshot(bytes, file.name, log);
+  if (fast.ok) {
+    return { ok: true, snapshot: fast, text: '', source: 'binary-fast', binaryDiagnostics: fast.diagnostics, dateHint: fast.date || dateHint };
+  }
+
+  // Fall back to the older melt approach for unusual binary shapes.
   const melted = meltBinaryHoi4(bytes, log);
   if (melted.text && melted.text.length > 100) {
-    return { ok: true, text: melted.text, source: 'binary', binaryDiagnostics: { ...melted.diagnostics, dateHint }, dateHint };
+    return { ok: true, text: melted.text, source: 'binary-melt', binaryDiagnostics: { ...melted.diagnostics, fastDiagnostics: fast.diagnostics, dateHint }, dateHint };
   }
 
   const nulCount = bytes.slice(0, Math.min(bytes.length, 4096)).filter(b => b === 0).length;
