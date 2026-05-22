@@ -6,7 +6,7 @@ A static, GitHub Pages-ready Hearts of Iron IV game-log parser/exporter.
 
 - Runs entirely in the browser.
 - Lets the user select their HOI4 save folder.
-- Watches the folder for new or changed `.hoi4` autosaves.
+- Watches the folder for new or changed `.hoi4` autosaves and ignores normal/manual save files in live folder mode for speed.
 - Exports `gamelog export.zip` for the renderer workflow.
 - Carries state controllers forward when a later snapshot is missing a state/controller.
 - Attempts normal `.hoi4` binary saves using an experimental local binary fallback.
@@ -68,3 +68,8 @@ Adds save-header date diagnostics. The export now lists candidate in-save date f
 ## v17 note
 
 Adds a full top-header token trace and date-candidate dump for normal `.hoi4` binary saves. This is to align the parser with the same date shown by HOI4's in-game save menu. If dates are still wrong, upload the export and the diagnostics will include enough header data to map the correct save-menu date field.
+
+
+## v18 note
+
+Live folder mode is now autosave-only. The parser only scans `autosave.hoi4`, `autosave_1.hoi4`, `autosave_2.hoi4`, and matching numbered autosaves, so large save folders full of manual saves should not slow each watch check.

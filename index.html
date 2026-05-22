@@ -4,21 +4,21 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>HOI4 Game Log Parser</title>
-  <link rel="stylesheet" href="src/styles.css?v=17" />
+  <link rel="stylesheet" href="src/styles.css?v=18" />
 </head>
 <body>
   <main class="wrap">
     <header>
       <h1>HOI4 Game Log Parser</h1>
       <p class="lead">Select a Hearts of Iron IV save folder, watch for autosaves, then export a game-log zip for rendering.</p>
-      <p class="muted"><strong>Version:</strong> v17 save-menu date fix</p>
+      <p class="muted"><strong>Version:</strong> v18 autosave-only live mode</p>
     </header>
 
     <section class="card">
       <h2>Save folder location</h2>
       <p>Typical Windows folder:</p>
       <code>Documents\Paradox Interactive\Hearts of Iron IV\save games</code>
-      <p class="muted">The browser can only read files/folders you manually select. Normal .hoi4 binary saves are attempted locally; no change to HOI4 save settings is required. After selecting the folder, use “Watch new saves only” at the start of a session to ignore existing autosaves and capture new/changed autosaves as the game runs. The log should say Version v17 when loaded; if it does not, refresh the page or clear the browser cache.</p>
+      <p class="muted">The browser can only read files/folders you manually select. Normal .hoi4 binary saves are attempted locally; no change to HOI4 save settings is required. After selecting the folder, use “Watch new saves only” at the start of a session to ignore existing autosaves and capture new/changed autosaves as the game runs. The live folder picker now ignores non-autosave .hoi4 files for speed. The log should say Version v18 when loaded; if it does not, refresh the page or clear the browser cache.</p>
     </section>
 
     <section class="card controls">
@@ -41,7 +41,7 @@
     </section>
 
     <section class="grid">
-      <div class="card stat"><span id="saveCount">0</span><small>saves found</small></div>
+      <div class="card stat"><span id="saveCount">0</span><small>autosaves found</small></div>
       <div class="card stat"><span id="snapshotCount">0</span><small>snapshots parsed</small></div>
       <div class="card stat"><span id="stateCount">0</span><small>states discovered</small></div>
       <div class="card stat"><span id="carryCount">0</span><small>carried-forward controllers</small></div>
@@ -55,6 +55,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-  <script type="module" src="src/app.js?v=17"></script>
+  <script type="module" src="src/app.js?v=18"></script>
 </body>
 </html>

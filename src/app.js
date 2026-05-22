@@ -37,6 +37,19 @@ function setStats(diag = {}) {
   els.carryCount.textContent = diag.carriedForwardControllers ?? 0;
 }
 
+function isAutosaveFileName(name) {
+  // Only the rotating autosaves matter for live capture. This avoids repeatedly scanning
+  // old manual saves in large save folders.
+  return /^autosave(?:_\d+)?\.hoi4$/i.test(name);
+}
+
+function filterAutosaveFiles(files, context = 'folder') {
+  const autosaves = files.filter(f => isAutosaveFileName(f.name));
+  const ignored = files.length - autosaves.length;
+  if (ignored > 0) log(`[INFO] Ignored ${ignored} non-autosave .hoi4 file(s) from ${context}.`);
+  return autosaves;
+}
+
 function parseIsoDate(value) {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   const [y, m, d] = value.split('-').map(Number);
@@ -97,6 +110,7 @@ async function selectFolder() {
   els.downloadBtn.disabled = true;
   log(`Selected live folder: ${dirHandle.name}`);
   log('[INFO] Live watch is available for this folder.');
+  log('[INFO] Autosave-only mode is active: autosave.hoi4, autosave_1.hoi4, autosave_2.hoi4, etc. Non-autosave saves are ignored for speed.');
 }
 
 async function collectFilesFromFolder() {
@@ -105,6 +119,7 @@ async function collectFilesFromFolder() {
   for await (const [name, handle] of dirHandle.entries()) {
     if (handle.kind !== 'file') continue;
     if (!/\.hoi4$/i.test(name)) continue;
+    if (!isAutosaveFileName(name)) continue;
     const file = await handle.getFile();
     files.push(file);
   }
@@ -162,7 +177,7 @@ async function updateExport() {
   const diagnostics = {
     generatedAt: new Date().toISOString(),
     source: 'HOI4 Game Log Parser Web',
-    parserVersion: 'v17',
+    parserVersion: 'v18',
     ...timeline.diagnostics,
     dateOverride,
     parsedFiles: parseDiagnostics.filter(d => d.stage === 'parsed').map(d => d.file),
@@ -256,8 +271,8 @@ els.latestDateOverride.addEventListener('change', () => {
 });
 els.fileFallback.addEventListener('change', async (e) => {
   els.log.textContent = '';
-  log('[INFO] Version v17 save-menu date fix loaded.');
-  fallbackFiles = [...e.target.files].filter(f => /\.hoi4$/i.test(f.name)).sort((a,b)=>a.name.localeCompare(b.name));
+  log('[INFO] Version v18 autosave-only live mode loaded.');
+  fallbackFiles = filterAutosaveFiles([...e.target.files].filter(f => /\.hoi4$/i.test(f.name)), 'folder fallback').sort((a,b)=>a.name.localeCompare(b.name));
   dirHandle = null;
   seen.clear();
   parsed.clear();
@@ -272,8 +287,8 @@ els.fileFallback.addEventListener('change', async (e) => {
 
 els.folderFallback.addEventListener('change', async (e) => {
   els.log.textContent = '';
-  log('[INFO] Version v17 save-menu date fix loaded.');
-  fallbackFiles = [...e.target.files].filter(f => /\.hoi4$/i.test(f.name)).sort((a,b)=>a.name.localeCompare(b.name));
+  log('[INFO] Version v18 autosave-only live mode loaded.');
+  fallbackFiles = filterAutosaveFiles([...e.target.files].filter(f => /\.hoi4$/i.test(f.name)), 'folder fallback').sort((a,b)=>a.name.localeCompare(b.name));
   dirHandle = null;
   seen.clear();
   parsed.clear();
