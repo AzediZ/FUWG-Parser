@@ -48,6 +48,7 @@ async function selectFolder() {
   latestZipBlob = null;
   els.parseBtn.disabled = false;
   els.watchBtn.disabled = false;
+  els.watchNewOnlyBtn.disabled = false;
   els.downloadBtn.disabled = true;
   log(`Selected folder: ${dirHandle.name}`);
 }
@@ -178,8 +179,16 @@ els.selectFolderBtn.addEventListener('click', () => selectFolder().catch(e => lo
 els.parseBtn.addEventListener('click', () => parseNow().catch(e => log('[ERROR] ' + e.message)));
 els.watchBtn.addEventListener('click', () => toggleWatch());
 els.watchNewOnlyBtn.addEventListener('click', async () => {
-  await markExistingAsSeen();
-  if (!watchTimer) toggleWatch();
+  try {
+    if (!dirHandle) {
+      log('[WARN] Select a save folder first.');
+      return;
+    }
+    await markExistingAsSeen();
+    if (!watchTimer) toggleWatch();
+  } catch (e) {
+    log('[ERROR] ' + e.message);
+  }
 });
 els.downloadBtn.addEventListener('click', downloadZip);
 els.fileFallback.addEventListener('change', async (e) => {
@@ -192,6 +201,7 @@ els.fileFallback.addEventListener('change', async (e) => {
   latestZipBlob = null;
   els.parseBtn.disabled = fallbackFiles.length === 0;
   els.watchBtn.disabled = true;
+  els.watchNewOnlyBtn.disabled = true;
   els.downloadBtn.disabled = true;
   log(`Selected ${fallbackFiles.length} save file(s) manually.`);
 });

@@ -28,3 +28,8 @@ Upload the repo contents to GitHub and enable GitHub Pages from the repo root. N
 ## Notes on binary saves
 
 HOI4's normal `.hoi4` saves may contain binary-encoded gamestate data. This repo does not ask users to change their HOI4 save format. Instead, it tries a limited local binary recovery path and then infers repeated numbered state blocks. If a binary save cannot be parsed yet, `parse_diagnostics.json` inside `gamelog export.zip` will contain the details needed to improve the fallback.
+
+
+## v7 note
+
+Fixed the `Watch new saves only` button being left disabled after selecting a save folder.
