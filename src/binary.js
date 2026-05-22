@@ -6,7 +6,7 @@
 
 function dateFromGameDays(days) {
   if (!Number.isFinite(days) || days <= 0 || days > 20000) return null;
-  const start = Date.UTC(1936, 0, 1);
+  const start = Date.UTC(1935, 11, 10);
   const d = new Date(start + days * 86400000);
   return d.toISOString().slice(0, 10);
 }
@@ -83,7 +83,7 @@ export function parseBinaryHoi4Snapshot(bytes, fileName = '', log = () => {}) {
 
     if (kind === 'number' && afterEquals && afterEquals.token === 13954 && value > 0 && value < 20000) {
       // In normal HOI4bin saves TOKEN_13954 appears near the top of the file as
-      // the actual game date, stored as days since 1936-01-01. The same token can
+      // the actual game date, stored as days since the HOI4 binary epoch, currently inferred as 1935-12-10. The same token can
       // appear later inside unrelated nested data, so keep the first valid hit only.
       if (dateDays === null) {
         dateDays = value;
@@ -136,7 +136,7 @@ export function parseBinaryHoi4Snapshot(bytes, fileName = '', log = () => {}) {
       inferredStates: Object.keys(states).length,
       dateDays,
       dateSource,
-      dateBase: dateDays ? '1936-01-01_plus_days' : null,
+      dateBase: dateDays ? '1935-12-10_plus_days' : null,
       candidates: ranked.slice(0, 8).map(x => ({ key: `TOKEN_${x.key}`, count: x.count }))
     }
   };

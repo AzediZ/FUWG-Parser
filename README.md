@@ -53,3 +53,8 @@ Binary save date parsing now uses the first/top-level game-date token and avoids
 ## v11 note
 
 Fixes binary save date extraction by preserving the first top-level HOI4 date token instead of allowing later nested values to overwrite it.
+
+
+## v12 note
+
+Normal `.hoi4` binary save date conversion now uses the inferred HOI4 binary date epoch `1935-12-10`, fixing the previous +22 day date offset seen in early-1936 test runs.
