@@ -162,7 +162,7 @@ async function updateExport() {
   const diagnostics = {
     generatedAt: new Date().toISOString(),
     source: 'HOI4 Game Log Parser Web',
-    parserVersion: 'v14',
+    parserVersion: 'v16',
     ...timeline.diagnostics,
     dateOverride,
     parsedFiles: parseDiagnostics.filter(d => d.stage === 'parsed').map(d => d.file),
@@ -251,7 +251,7 @@ els.latestDateOverride.addEventListener('change', () => {
 });
 els.fileFallback.addEventListener('change', async (e) => {
   els.log.textContent = '';
-  log('[INFO] Version v13 date-reader test loaded.');
+  log('[INFO] Version v16 save-menu date fix loaded.');
   fallbackFiles = [...e.target.files].filter(f => /\.hoi4$/i.test(f.name)).sort((a,b)=>a.name.localeCompare(b.name));
   dirHandle = null;
   seen.clear();
@@ -267,7 +267,7 @@ els.fileFallback.addEventListener('change', async (e) => {
 
 els.folderFallback.addEventListener('change', async (e) => {
   els.log.textContent = '';
-  log('[INFO] Version v13 date-reader test loaded.');
+  log('[INFO] Version v16 save-menu date fix loaded.');
   fallbackFiles = [...e.target.files].filter(f => /\.hoi4$/i.test(f.name)).sort((a,b)=>a.name.localeCompare(b.name));
   dirHandle = null;
   seen.clear();

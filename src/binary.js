@@ -4,11 +4,27 @@
 // sequence, finds repeated tag assignments inside numbered state-like blocks,
 // and chooses the assignment key with the most distinct state ids.
 
+const HOI4_SAVE_MENU_CLOCK_JAN_1_1936 = 60759361;
+
 function dateFromGameDays(days) {
   if (!Number.isFinite(days) || days < 0 || days > 20000) return null;
   const start = Date.UTC(1936, 0, 1);
   const d = new Date(start + days * 86400000);
   return d.toISOString().slice(0, 10);
+}
+
+function daysFromSaveMenuClock(value) {
+  if (!Number.isFinite(value)) return null;
+  // TOKEN_10314 is the large save-menu clock HOI4 uses in normal .hoi4 binary saves.
+  // In observed saves, Jan 1 1936 is 60759361 and the value advances by 24 per day.
+  const days = Math.round((value - HOI4_SAVE_MENU_CLOCK_JAN_1_1936) / 24);
+  if (days < 0 || days > 20000) return null;
+  return days;
+}
+
+function dateFromSaveMenuClock(value) {
+  const days = daysFromSaveMenuClock(value);
+  return days === null ? null : dateFromGameDays(days);
 }
 
 
@@ -94,6 +110,8 @@ function headerDateCandidates(bytes, maxBytes = 4096) {
       keyOffset: x.assignedKeyOffset,
       depth: x.depth,
       as1936Jan01: dateFromEpoch(x.value, 1936, 1, 1),
+      asSaveMenuClock: dateFromSaveMenuClock(x.value),
+      saveMenuDays: daysFromSaveMenuClock(x.value),
       as1935Dec10: dateFromEpoch(x.value, 1935, 12, 10),
       as1935Nov06: dateFromEpoch(x.value, 1935, 11, 6),
       as1935Oct31: dateFromEpoch(x.value, 1935, 10, 31)
@@ -174,16 +192,16 @@ export function parseBinaryHoi4Snapshot(bytes, fileName = '', log = () => {}) {
       continue;
     }
 
-    if (kind === 'number' && afterEquals && afterEquals.token === 13954 && value > 0 && value < 20000) {
-      // In observed normal HOI4bin saves, the real game date is a TOKEN_13954
-      // assignment in the small top header area, normally around byte 204.
-      // The same token can appear later inside other structures; do not use those
-      // for the displayed/exported snapshot date.
-      const looksLikeHeaderDate = stack.length === 0 && afterEquals.off >= 0 && afterEquals.off < 4096;
-      if (dateDays === null && looksLikeHeaderDate) {
-        dateDays = value;
+    if (kind === 'number' && afterEquals && afterEquals.token === 10314) {
+      // HOI4's own save menu date is stored as a large header clock value.
+      // The value advances by 24 per in-game day; Jan 1 1936 is 60759361.
+      // This is more reliable than the smaller date-like header counters.
+      const looksLikeHeaderClock = stack.length === 0 && afterEquals.off >= 0 && afterEquals.off < 256;
+      const days = daysFromSaveMenuClock(value);
+      if (dateDays === null && looksLikeHeaderClock && days !== null) {
+        dateDays = days;
         dateOffset = afterEquals.off;
-        dateSource = 'TOKEN_13954_header';
+        dateSource = 'TOKEN_10314_save_menu_clock';
       }
       afterEquals = null;
     }
@@ -233,8 +251,8 @@ export function parseBinaryHoi4Snapshot(bytes, fileName = '', log = () => {}) {
       dateDays,
       dateSource,
       dateOffset,
-      parserVersion: 'v15',
-      dateBase: dateDays !== null ? '1936-01-01_plus_days' : null,
+      parserVersion: 'v16',
+      dateBase: dateDays !== null ? 'TOKEN_10314_save_menu_clock_60759361_plus_24h_per_day' : null,
       dateCandidates: dateCandidates.slice(0, 120),
       headerTrace: headerTrace.slice(0, 180),
       candidates: ranked.slice(0, 8).map(x => ({ key: `TOKEN_${x.key}`, count: x.count }))

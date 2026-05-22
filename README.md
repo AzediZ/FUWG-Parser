@@ -65,6 +65,6 @@ Normal `.hoi4` binary save date conversion now uses the inferred HOI4 binary dat
 Adds save-header date diagnostics. The export now lists candidate in-save date fields from the `.hoi4` header so the parser can be aligned with the same date the HOI4 save menu displays, instead of relying on the current TOKEN_13954 guess.
 
 
-## v15 note
+## v16 note
 
 Adds a full top-header token trace and date-candidate dump for normal `.hoi4` binary saves. This is to align the parser with the same date shown by HOI4's in-game save menu. If dates are still wrong, upload the export and the diagnostics will include enough header data to map the correct save-menu date field.
