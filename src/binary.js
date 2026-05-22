@@ -102,7 +102,7 @@ function dateFromEpoch(days, y, m, d) {
 function headerDateCandidates(bytes, maxBytes = 4096) {
   const trace = parseHeaderTokenTrace(bytes, maxBytes);
   return trace
-    .filter(x => x.assignedKey && x.kind === 'number' && Number.isFinite(x.value) && x.value >= 0 && x.value <= 20000)
+    .filter(x => x.assignedKey && x.kind === 'number' && Number.isFinite(x.value) && x.value >= 0 && x.value <= 100000000)
     .map(x => ({
       key: x.assignedKey,
       value: x.value,
@@ -216,7 +216,7 @@ export function parseBinaryHoi4Snapshot(bytes, fileName = '', log = () => {}) {
     }
 
     if (kind === 'key' || kind === 'number' || kind === 'string') {
-      pending = { kind, token, value };
+      pending = { kind, token, value, off: tokenOffset };
     }
   }
 
@@ -251,7 +251,7 @@ export function parseBinaryHoi4Snapshot(bytes, fileName = '', log = () => {}) {
       dateDays,
       dateSource,
       dateOffset,
-      parserVersion: 'v16',
+      parserVersion: 'v17',
       dateBase: dateDays !== null ? 'TOKEN_10314_save_menu_clock_60759361_plus_24h_per_day' : null,
       dateCandidates: dateCandidates.slice(0, 120),
       headerTrace: headerTrace.slice(0, 180),
