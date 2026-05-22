@@ -1,225 +1,173 @@
-import { buildOutputFiles, parseFileToRawSnapshot } from './parser.js';
-import { downloadBlob, makeZip } from './zip.js';
+import { readHoi4SaveFile, parseSnapshot, buildTimeline } from './parser.js';
+import { makeExportZip } from './zip.js';
 
-const el = {
-  gameTitle: document.getElementById('gameTitle'),
-  watchSeconds: document.getElementById('watchSeconds'),
-  pickFolderBtn: document.getElementById('pickFolderBtn'),
-  fallbackFiles: document.getElementById('fallbackFiles'),
-  parseNowBtn: document.getElementById('parseNowBtn'),
-  startWatchBtn: document.getElementById('startWatchBtn'),
-  stopWatchBtn: document.getElementById('stopWatchBtn'),
+const els = {
+  selectFolderBtn: document.getElementById('selectFolderBtn'),
+  parseBtn: document.getElementById('parseBtn'),
+  watchBtn: document.getElementById('watchBtn'),
   downloadBtn: document.getElementById('downloadBtn'),
-  clearBtn: document.getElementById('clearBtn'),
+  fileFallback: document.getElementById('fileFallback'),
+  pollSeconds: document.getElementById('pollSeconds'),
+  log: document.getElementById('log'),
   saveCount: document.getElementById('saveCount'),
   snapshotCount: document.getElementById('snapshotCount'),
   stateCount: document.getElementById('stateCount'),
-  carryCount: document.getElementById('carryCount'),
-  watchBadge: document.getElementById('watchBadge'),
-  log: document.getElementById('log')
+  carryCount: document.getElementById('carryCount')
 };
 
-let directoryHandle = null;
-let fallbackFileList = [];
-let fileMeta = new Map();
-let rawByPath = new Map();
-let outputFiles = null;
+let dirHandle = null;
+let fallbackFiles = [];
+let seen = new Map();
+let parsed = new Map();
+let latestZipBlob = null;
 let watchTimer = null;
-let pollRunning = false;
-let orderCounter = 0;
 
-function clearLog(message = '') {
-  el.log.textContent = message;
+function log(msg) {
+  els.log.textContent += msg + '\n';
+  els.log.scrollTop = els.log.scrollHeight;
+}
+function setStats(diag = {}) {
+  els.snapshotCount.textContent = diag.snapshots ?? 0;
+  els.stateCount.textContent = diag.states ?? 0;
+  els.carryCount.textContent = diag.carriedForwardControllers ?? 0;
 }
 
-function log(message, level = '') {
-  const prefix = level ? `[${level.toUpperCase()}] ` : '';
-  el.log.textContent += `${el.log.textContent ? '\n' : ''}${prefix}${message}`;
-  el.log.scrollTop = el.log.scrollHeight;
-}
-
-function isSaveLike(path) {
-  const lower = path.toLowerCase();
-  if (lower.endsWith('.tmp')) return false;
-  return lower.endsWith('.hoi4') || lower.endsWith('.txt') || lower.endsWith('.log') || lower.endsWith('.json');
-}
-
-function updateButtons() {
-  const hasSource = Boolean(directoryHandle) || fallbackFileList.length > 0;
-  const watching = Boolean(watchTimer);
-  el.parseNowBtn.disabled = !hasSource || watching;
-  el.startWatchBtn.disabled = !directoryHandle || watching;
-  el.stopWatchBtn.disabled = !watching;
-  el.downloadBtn.disabled = !outputFiles;
-  el.watchBadge.textContent = watching ? 'Watching save folder' : 'Not watching';
-  el.watchBadge.classList.toggle('live', watching);
-}
-
-function refreshOutput() {
-  const rawSnapshots = [...rawByPath.values()];
-  const built = buildOutputFiles({
-    title: el.gameTitle.value.trim() || 'HOI4 Game Log',
-    rawSnapshots
-  });
-  outputFiles = rawSnapshots.length ? built.files : null;
-  el.saveCount.textContent = String(rawSnapshots.length);
-  el.snapshotCount.textContent = String(built.summary.snapshotCount);
-  el.stateCount.textContent = String(built.summary.stateCount);
-  el.carryCount.textContent = String(built.summary.carriedForward);
-  updateButtons();
-  return built.summary;
-}
-
-async function* walkDirectory(handle, prefix = '') {
-  for await (const [name, child] of handle.entries()) {
-    const path = prefix ? `${prefix}/${name}` : name;
-    if (child.kind === 'file') {
-      if (isSaveLike(path)) {
-        const file = await child.getFile();
-        yield { file, path };
-      }
-    } else if (child.kind === 'directory') {
-      yield* walkDirectory(child, path);
-    }
+async function selectFolder() {
+  els.log.textContent = '';
+  if (!window.showDirectoryPicker) {
+    log('[WARN] Folder selection is not supported in this browser. Use Chrome/Edge or the manual file fallback.');
+    return;
   }
+  dirHandle = await window.showDirectoryPicker({ mode: 'read' });
+  fallbackFiles = [];
+  seen.clear();
+  parsed.clear();
+  latestZipBlob = null;
+  els.parseBtn.disabled = false;
+  els.watchBtn.disabled = false;
+  els.downloadBtn.disabled = true;
+  log(`Selected folder: ${dirHandle.name}`);
 }
 
-async function collectDirectoryFiles() {
+async function collectFilesFromFolder() {
+  if (!dirHandle) return [];
   const files = [];
-  if (!directoryHandle) return files;
-  for await (const entry of walkDirectory(directoryHandle)) files.push(entry);
-  files.sort((a, b) => a.path.localeCompare(b.path));
-  return files;
+  for await (const [name, handle] of dirHandle.entries()) {
+    if (handle.kind !== 'file') continue;
+    if (!/\.hoi4$/i.test(name)) continue;
+    const file = await handle.getFile();
+    files.push(file);
+  }
+  return files.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-async function parseEntries(entries, { onlyChanged = false } = {}) {
-  let parsed = 0;
+async function parseFiles(files, onlyChanged = false) {
+  log(onlyChanged ? `Checking ${files.length} file(s)...` : 'Scanning selected folder...');
+  els.saveCount.textContent = files.length;
+  let changed = 0;
   let skipped = 0;
-  let unchanged = 0;
 
-  for (const entry of entries) {
-    const { file, path } = entry;
-    const sig = `${file.size}:${file.lastModified}`;
-    if (onlyChanged && fileMeta.get(path) === sig) {
-      unchanged++;
-      continue;
-    }
+  for (const file of files) {
+    const sig = `${file.name}:${file.size}:${file.lastModified}`;
+    if (onlyChanged && seen.get(file.name) === sig) continue;
+    seen.set(file.name, sig);
+    changed++;
 
-    fileMeta.set(path, sig);
-    const raw = await parseFileToRawSnapshot(file, path, orderCounter++);
-    if (raw.skipped) {
+    const read = await readHoi4SaveFile(file, log);
+    if (!read.ok) {
       skipped++;
-      log(`Skipped ${path} (${raw.reason})`, 'warn');
+      log(`[WARN] Skipped ${file.name} (${read.reason})`);
       continue;
     }
-
-    rawByPath.set(path, raw);
-    parsed++;
-    log(`Parsed ${path}: ${raw.date}, ${Object.keys(raw.partialStates || {}).length} states`);
-  }
-
-  const summary = refreshOutput();
-  if (parsed || skipped) {
-    log(`Updated export: ${summary.snapshotCount} snapshots, ${summary.stateCount} states, ${summary.carriedForward} carried-forward controllers.`, 'ok');
-  } else if (unchanged && onlyChanged) {
-    log(`Checked ${unchanged} file(s). No new or changed saves.`);
-  }
-}
-
-async function parseNow() {
-  try {
-    el.parseNowBtn.disabled = true;
-    if (directoryHandle) {
-      log('Scanning selected folder...');
-      const entries = await collectDirectoryFiles();
-      log(`Found ${entries.length} save-like file(s).`);
-      await parseEntries(entries, { onlyChanged: false });
-    } else {
-      const entries = fallbackFileList.map(file => ({ file, path: file.webkitRelativePath || file.name })).filter(e => isSaveLike(e.path));
-      log(`Parsing ${entries.length} selected file(s).`);
-      await parseEntries(entries, { onlyChanged: false });
+    const snap = parseSnapshot(read.text, file.name);
+    if (!snap.ok) {
+      skipped++;
+      log(`[WARN] Skipped ${file.name} (${snap.reason}, source=${read.source})`);
+      continue;
     }
-  } catch (err) {
-    log(String(err && err.stack || err), 'bad');
-  } finally {
-    updateButtons();
+    parsed.set(file.name, snap);
+    log(`[OK] Parsed ${file.name}${snap.date ? ' -> ' + snap.date : ''} (${Object.keys(snap.states).length} states, source=${read.source})`);
   }
-}
 
-async function watchTick() {
-  if (pollRunning || !directoryHandle) return;
-  pollRunning = true;
-  try {
-    const entries = await collectDirectoryFiles();
-    await parseEntries(entries, { onlyChanged: true });
-  } catch (err) {
-    log(String(err && err.stack || err), 'bad');
-  } finally {
-    pollRunning = false;
-  }
-}
-
-el.pickFolderBtn.addEventListener('click', async () => {
-  if (!('showDirectoryPicker' in window)) {
-    log('This browser does not support live folder picking. Use Chrome or Edge, or use the fallback selector for one-off parsing.', 'warn');
+  if (onlyChanged && changed === 0) {
+    log(`Checked ${files.length} file(s). No new or changed saves.`);
     return;
   }
 
-  try {
-    directoryHandle = await window.showDirectoryPicker({ mode: 'read' });
-    fallbackFileList = [];
-    clearLog(`Selected folder: ${directoryHandle.name}`);
-    updateButtons();
-    await parseNow();
-  } catch (err) {
-    if (err && err.name === 'AbortError') return;
-    log(String(err && err.stack || err), 'bad');
+  await updateExport();
+  if (skipped && parsed.size === 0) {
+    log('[NOTE] All saves were skipped. If they say binary_save_enable_text_saves, change HOI4 save format to text/non-binary where possible, then test again.');
   }
-});
+}
 
-el.fallbackFiles.addEventListener('change', event => {
-  fallbackFileList = Array.from(event.target.files || []);
-  directoryHandle = null;
-  clearLog(`Selected ${fallbackFileList.length} file(s) with fallback picker.`);
-  updateButtons();
-});
+async function updateExport() {
+  const timeline = buildTimeline([...parsed.values()]);
+  const diagnostics = {
+    generatedAt: new Date().toISOString(),
+    source: 'HOI4 Game Log Parser Web',
+    ...timeline.diagnostics,
+    parsedFiles: [...parsed.keys()].sort()
+  };
+  latestZipBlob = await makeExportZip({
+    game: { title: 'Game Log Export', generatedAt: diagnostics.generatedAt },
+    snapshots: timeline.snapshots,
+    stateControllerTimeline: timeline.stateControllerTimeline,
+    diagnostics
+  });
+  els.downloadBtn.disabled = timeline.snapshots.length === 0;
+  setStats(timeline.diagnostics);
+  log(`[OK] Updated export: ${timeline.diagnostics.snapshots} snapshots, ${timeline.diagnostics.states} states, ${timeline.diagnostics.carriedForwardControllers} carried-forward controllers.`);
+}
 
-el.parseNowBtn.addEventListener('click', parseNow);
+async function parseNow() {
+  const files = dirHandle ? await collectFilesFromFolder() : fallbackFiles;
+  await parseFiles(files, false);
+}
 
-el.startWatchBtn.addEventListener('click', async () => {
-  if (!directoryHandle || watchTimer) return;
-  const seconds = Math.max(2, Math.min(60, Number(el.watchSeconds.value || 5)));
+async function tickWatch() {
+  const files = await collectFilesFromFolder();
+  await parseFiles(files, true);
+}
+
+function toggleWatch() {
+  if (watchTimer) {
+    clearInterval(watchTimer);
+    watchTimer = null;
+    els.watchBtn.textContent = 'Start watching';
+    log('Watch mode stopped.');
+    return;
+  }
+  const seconds = Math.max(2, Number(els.pollSeconds.value) || 5);
+  els.watchBtn.textContent = 'Stop watching';
   log(`Watch mode started. Checking every ${seconds} seconds.`);
-  await watchTick();
-  watchTimer = setInterval(watchTick, seconds * 1000);
-  updateButtons();
-});
+  tickWatch();
+  watchTimer = setInterval(tickWatch, seconds * 1000);
+}
 
-el.stopWatchBtn.addEventListener('click', () => {
-  if (watchTimer) clearInterval(watchTimer);
-  watchTimer = null;
-  log('Watch mode stopped.');
-  updateButtons();
-});
+function downloadZip() {
+  if (!latestZipBlob) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(latestZipBlob);
+  a.download = 'gamelog export.zip';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
 
-el.downloadBtn.addEventListener('click', () => {
-  if (!outputFiles) return;
-  downloadBlob(makeZip(outputFiles), 'gamelog export.zip');
+els.selectFolderBtn.addEventListener('click', () => selectFolder().catch(e => log('[ERROR] ' + e.message)));
+els.parseBtn.addEventListener('click', () => parseNow().catch(e => log('[ERROR] ' + e.message)));
+els.watchBtn.addEventListener('click', () => toggleWatch());
+els.downloadBtn.addEventListener('click', downloadZip);
+els.fileFallback.addEventListener('change', async (e) => {
+  els.log.textContent = '';
+  fallbackFiles = [...e.target.files].filter(f => /\.hoi4$/i.test(f.name)).sort((a,b)=>a.name.localeCompare(b.name));
+  dirHandle = null;
+  seen.clear();
+  parsed.clear();
+  latestZipBlob = null;
+  els.parseBtn.disabled = fallbackFiles.length === 0;
+  els.watchBtn.disabled = true;
+  els.downloadBtn.disabled = true;
+  log(`Selected ${fallbackFiles.length} save file(s) manually.`);
 });
-
-el.clearBtn.addEventListener('click', () => {
-  if (watchTimer) clearInterval(watchTimer);
-  watchTimer = null;
-  directoryHandle = null;
-  fallbackFileList = [];
-  fileMeta = new Map();
-  rawByPath = new Map();
-  outputFiles = null;
-  orderCounter = 0;
-  el.fallbackFiles.value = '';
-  clearLog('Session cleared. Select a HOI4 save folder to begin.');
-  refreshOutput();
-});
-
-refreshOutput();
-updateButtons();

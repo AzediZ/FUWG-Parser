@@ -1,61 +1,34 @@
-# HOI4 Game Log Parser
+# HOI4 Game Log Parser Web
 
-A static, client-side Hearts of Iron IV save parser for creating game-log exports for an animation renderer.
+Static browser-based Hearts of Iron IV game-log parser/exporter.
 
-No backend, no install, no Python, no EXE. The app runs in the browser and reads local files only after the user selects a save folder or files.
+## Usage
 
-## Recommended use
+1. Open `index.html` locally or host the repo with GitHub Pages.
+2. Click **Select save folder**.
+3. Select:
 
-1. Open the hosted GitHub Pages site in Chrome or Edge.
-2. Click **Select save folder** and choose the HOI4 save/autosave folder.
-3. Click **Start watching** before or during the multiplayer game.
-4. Keep the tab open while autosaves are generated.
-5. When the game is done, click **Download gamelog export.zip**.
+   `Documents/Paradox Interactive/Hearts of Iron IV/save games`
 
-The final export file is:
+4. Click **Start watching** while the multiplayer game is running.
+5. When finished, click **Download gamelog export.zip**.
 
-```text
-gamelog export.zip
-```
+The parser runs locally in the browser. It only reads files/folders selected by the user.
 
-## Output files
+## Output
 
-The export zip contains:
+The downloaded `gamelog export.zip` contains:
 
-```text
-game.json
-snapshots.json
-snapshots_compact.json
-state_controller_timeline.json
-parse_diagnostics.json
-```
+- `game.json`
+- `snapshots.json`
+- `snapshots_compact.json`
+- `state_controller_timeline.json`
+- `parse_diagnostics.json`
 
 ## State-controller fix
 
-Every exported snapshot contains every discovered state.
-
-If a state is missing from a later save parse, the previous known controller is carried forward. If a state has no known controller yet, it is exported as `NUL` instead of being dropped.
-
-This is intended to avoid broken renders caused by incomplete snapshots where countries/states disappear or become null later in the game.
-
-## Browser support
-
-Chrome or Edge are recommended for live watch mode because they support folder selection through the File System Access API.
-
-Fallback file/folder selection is also included, but fallback mode cannot automatically detect new autosaves. Users must reselect files to parse newly-created saves.
+Each snapshot exports every discovered state. If a later save omits a state controller, the previous controller is carried forward. If the state has never had a known controller, it is exported as `NUL`.
 
 ## Save format note
 
-This parser expects text/uncompressed HOI4 save files. If saves are compressed/binary, the browser parser will skip them.
-
-For best results, use uncompressed autosaves for the session being parsed.
-
-## GitHub Pages setup
-
-1. Create a new GitHub repo.
-2. Upload all files from this folder.
-3. Go to **Settings → Pages**.
-4. Set source to the main branch and root folder.
-5. Open the published Pages URL.
-
-No build step is required.
+This version supports plain-text `.hoi4` saves and ZIP-compressed `.hoi4` saves that contain a readable `gamestate` entry. Fully binary saves cannot be parsed by this static browser version.

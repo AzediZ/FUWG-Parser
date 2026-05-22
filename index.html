@@ -4,87 +4,49 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>HOI4 Game Log Parser</title>
-  <link rel="stylesheet" href="./src/styles.css" />
+  <link rel="stylesheet" href="src/styles.css" />
 </head>
 <body>
-  <main class="shell">
-    <header class="hero">
-      <div>
-        <p class="eyebrow">Client-side save parser</p>
-        <h1>HOI4 Game Log Parser</h1>
-        <p class="lede">Select your HOI4 save folder, keep this page open during the game, then export <code>gamelog export.zip</code> for the animation renderer.</p>
-      </div>
-      <div class="privacy-card">
-        <strong>Local only</strong>
-        <span>This app reads files only after you select them. Saves are parsed in your browser and are not uploaded anywhere by the app.</span>
-      </div>
+  <main class="wrap">
+    <header>
+      <h1>HOI4 Game Log Parser</h1>
+      <p class="lead">Select a Hearts of Iron IV save folder, watch for autosaves, then export a game-log zip for rendering.</p>
     </header>
 
+    <section class="card">
+      <h2>Save folder location</h2>
+      <p>Typical Windows folder:</p>
+      <code>Documents\Paradox Interactive\Hearts of Iron IV\save games</code>
+      <p class="muted">The browser can only read files/folders you manually select.</p>
+    </section>
+
+    <section class="card controls">
+      <button id="selectFolderBtn">Select save folder</button>
+      <button id="parseBtn" disabled>Parse selected saves</button>
+      <button id="watchBtn" disabled>Start watching</button>
+      <button id="downloadBtn" disabled>Download gamelog export.zip</button>
+      <label class="interval">Check every
+        <input id="pollSeconds" type="number" min="2" max="60" value="5" /> seconds
+      </label>
+      <input id="fileFallback" type="file" multiple accept=".hoi4,.txt,.save" />
+      <label for="fileFallback" class="fallback">Fallback: select save files manually</label>
+    </section>
+
     <section class="grid">
-      <article class="card controls-card">
-        <h2>Setup</h2>
-        <label class="field">
-          Game title / folder name
-          <input id="gameTitle" value="22-05-2026" autocomplete="off" />
-        </label>
-        <label class="field small-field">
-          Watch interval, seconds
-          <input id="watchSeconds" type="number" min="2" max="60" value="5" />
-        </label>
-
-        <div class="button-row">
-          <button id="pickFolderBtn" type="button">Select save folder</button>
-          <label class="file-button">
-            Fallback: select files/folder
-            <input id="fallbackFiles" type="file" webkitdirectory directory multiple />
-          </label>
-        </div>
-
-        <p class="hint"><strong>Save folder:</strong> usually <code>Documents/Paradox Interactive/Hearts of Iron IV/save games</code>. Chrome or Edge is recommended for live folder watching. The fallback selector can parse selected files, but it cannot automatically see new autosaves until you select them again.</p>
-
-        <div class="button-row">
-          <button id="parseNowBtn" type="button" disabled>Parse now</button>
-          <button id="startWatchBtn" type="button" disabled>Start watching</button>
-          <button id="stopWatchBtn" type="button" disabled class="secondary">Stop</button>
-        </div>
-
-        <div class="button-row">
-          <button id="downloadBtn" type="button" disabled class="download">Download gamelog export.zip</button>
-          <button id="clearBtn" type="button" class="secondary">Clear session</button>
-        </div>
-      </article>
-
-      <article class="card stats-card">
-        <h2>Status</h2>
-        <div class="stats">
-          <div><span id="saveCount">0</span><small>saves parsed</small></div>
-          <div><span id="snapshotCount">0</span><small>snapshots</small></div>
-          <div><span id="stateCount">0</span><small>states</small></div>
-          <div><span id="carryCount">0</span><small>carried forward</small></div>
-        </div>
-        <div id="watchBadge" class="badge">Not watching</div>
-      </article>
+      <div class="card stat"><span id="saveCount">0</span><small>saves found</small></div>
+      <div class="card stat"><span id="snapshotCount">0</span><small>snapshots parsed</small></div>
+      <div class="card stat"><span id="stateCount">0</span><small>states discovered</small></div>
+      <div class="card stat"><span id="carryCount">0</span><small>carried-forward controllers</small></div>
     </section>
 
     <section class="card">
       <h2>Log</h2>
-      <pre id="log">Select a HOI4 save folder to begin.</pre>
-    </section>
-
-    <section class="card">
-      <h2>Output format</h2>
-      <p>The downloaded zip contains:</p>
-      <ul>
-        <li><code>game.json</code></li>
-        <li><code>snapshots.json</code></li>
-        <li><code>snapshots_compact.json</code></li>
-        <li><code>state_controller_timeline.json</code></li>
-        <li><code>parse_diagnostics.json</code></li>
-      </ul>
-      <p class="hint">State-controller fix: every exported snapshot contains every discovered state. Missing controllers are carried forward from the previous snapshot; first-time unknowns become <code>NUL</code>. Zip-compressed text saves are supported in current Chrome/Edge; fully binary saves are not readable by the browser parser.</p>
+      <pre id="log"></pre>
     </section>
   </main>
 
-  <script type="module" src="./src/app.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script type="module" src="src/app.js"></script>
 </body>
 </html>
