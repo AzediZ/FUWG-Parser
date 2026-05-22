@@ -21,6 +21,7 @@ let seen = new Map();
 let parsed = new Map();
 let latestZipBlob = null;
 let watchTimer = null;
+let parseDiagnostics = [];
 
 function log(msg) {
   els.log.textContent += msg + '\n';
@@ -42,6 +43,7 @@ async function selectFolder() {
   fallbackFiles = [];
   seen.clear();
   parsed.clear();
+  parseDiagnostics = [];
   latestZipBlob = null;
   els.parseBtn.disabled = false;
   els.watchBtn.disabled = false;
@@ -76,17 +78,21 @@ async function parseFiles(files, onlyChanged = false) {
     const read = await readHoi4SaveFile(file, log);
     if (!read.ok) {
       skipped++;
+      parseDiagnostics.push({ file: file.name, stage: 'read', reason: read.reason });
       log(`[WARN] Skipped ${file.name} (${read.reason})`);
       continue;
     }
     const snap = parseSnapshot(read.text, file.name);
     if (!snap.ok) {
       skipped++;
+      parseDiagnostics.push({ file: file.name, stage: 'parse', reason: snap.reason, source: read.source, diagnostics: snap.diagnostics, binaryDiagnostics: read.binaryDiagnostics });
       log(`[WARN] Skipped ${file.name} (${snap.reason}, source=${read.source})`);
+      if (snap.diagnostics?.candidates?.length) log(`[INFO] Binary candidates: ${snap.diagnostics.candidates.slice(0,3).map(c => `${c.key}:${c.count}`).join(', ')}`);
       continue;
     }
     parsed.set(file.name, snap);
-    log(`[OK] Parsed ${file.name}${snap.date ? ' -> ' + snap.date : ''} (${Object.keys(snap.states).length} states, source=${read.source})`);
+    parseDiagnostics.push({ file: file.name, stage: 'parsed', source: read.source, states: Object.keys(snap.states).length, binaryFallback: !!snap.binaryFallback, diagnostics: snap.diagnostics, binaryDiagnostics: read.binaryDiagnostics });
+    log(`[OK] Parsed ${file.name}${snap.date ? ' -> ' + snap.date : ''} (${Object.keys(snap.states).length} states, source=${read.source}${snap.binaryFallback ? ', inferred binary state blocks' : ''})`);
   }
 
   if (onlyChanged && changed === 0) {
@@ -96,7 +102,7 @@ async function parseFiles(files, onlyChanged = false) {
 
   await updateExport();
   if (skipped && parsed.size === 0) {
-    log('[NOTE] All saves were skipped. If they say binary_save_enable_text_saves, change HOI4 save format to text/non-binary where possible, then test again.');
+    log('[NOTE] No state snapshots were recovered yet. You can still download gamelog export.zip for diagnostics.');
   }
 }
 
@@ -106,7 +112,8 @@ async function updateExport() {
     generatedAt: new Date().toISOString(),
     source: 'HOI4 Game Log Parser Web',
     ...timeline.diagnostics,
-    parsedFiles: [...parsed.keys()].sort()
+    parsedFiles: [...parsed.keys()].sort(),
+    parseDiagnostics
   };
   latestZipBlob = await makeExportZip({
     game: { title: 'Game Log Export', generatedAt: diagnostics.generatedAt },
@@ -114,7 +121,7 @@ async function updateExport() {
     stateControllerTimeline: timeline.stateControllerTimeline,
     diagnostics
   });
-  els.downloadBtn.disabled = timeline.snapshots.length === 0;
+  els.downloadBtn.disabled = timeline.snapshots.length === 0 && parseDiagnostics.length === 0;
   setStats(timeline.diagnostics);
   log(`[OK] Updated export: ${timeline.diagnostics.snapshots} snapshots, ${timeline.diagnostics.states} states, ${timeline.diagnostics.carriedForwardControllers} carried-forward controllers.`);
 }
@@ -165,6 +172,7 @@ els.fileFallback.addEventListener('change', async (e) => {
   dirHandle = null;
   seen.clear();
   parsed.clear();
+  parseDiagnostics = [];
   latestZipBlob = null;
   els.parseBtn.disabled = fallbackFiles.length === 0;
   els.watchBtn.disabled = true;

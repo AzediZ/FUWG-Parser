@@ -1,34 +1,30 @@
 # HOI4 Game Log Parser Web
 
-Static browser-based Hearts of Iron IV game-log parser/exporter.
+A static, GitHub Pages-ready Hearts of Iron IV game-log parser/exporter.
 
-## Usage
+## What it does
 
-1. Open `index.html` locally or host the repo with GitHub Pages.
-2. Click **Select save folder**.
-3. Select:
+- Runs entirely in the browser.
+- Lets the user select their HOI4 save folder.
+- Watches the folder for new or changed `.hoi4` autosaves.
+- Exports `gamelog export.zip` for the renderer workflow.
+- Carries state controllers forward when a later snapshot is missing a state/controller.
+- Attempts normal `.hoi4` binary saves using an experimental local binary fallback.
 
-   `Documents/Paradox Interactive/Hearts of Iron IV/save games`
+## Save folder
 
-4. Click **Start watching** while the multiplayer game is running.
-5. When finished, click **Download gamelog export.zip**.
+Typical Windows path:
 
-The parser runs locally in the browser. It only reads files/folders selected by the user.
+```text
+Documents\Paradox Interactive\Hearts of Iron IV\save games
+```
 
-## Output
+The browser can only read files/folders the user manually selects.
 
-The downloaded `gamelog export.zip` contains:
+## Hosting
 
-- `game.json`
-- `snapshots.json`
-- `snapshots_compact.json`
-- `state_controller_timeline.json`
-- `parse_diagnostics.json`
+Upload the repo contents to GitHub and enable GitHub Pages from the repo root. No build step is required.
 
-## State-controller fix
+## Notes on binary saves
 
-Each snapshot exports every discovered state. If a later save omits a state controller, the previous controller is carried forward. If the state has never had a known controller, it is exported as `NUL`.
-
-## Save format note
-
-This version supports plain-text `.hoi4` saves and ZIP-compressed `.hoi4` saves that contain a readable `gamestate` entry. Fully binary saves cannot be parsed by this static browser version.
+HOI4's normal `.hoi4` saves may contain binary-encoded gamestate data. This repo does not ask users to change their HOI4 save format. Instead, it tries a limited local binary recovery path and then infers repeated numbered state blocks. If a binary save cannot be parsed yet, `parse_diagnostics.json` inside `gamelog export.zip` will contain the details needed to improve the fallback.

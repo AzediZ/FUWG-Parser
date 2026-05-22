@@ -1,3 +1,5 @@
+import { meltBinaryHoi4, inferStatesFromMeltedBinary } from './binary.js';
+
 const decoder = new TextDecoder('utf-8', { fatal: false });
 
 function logSafeTextSample(text) {
@@ -24,10 +26,14 @@ export async function readHoi4SaveFile(file, log = () => {}) {
       if (!preferred) return { ok: false, reason: `zip_no_gamestate entries=${names.join(',')}` };
       const inner = entries[preferred];
       const text = decoder.decode(inner);
-      if (!looksLikeTextSave(text)) {
-        return { ok: false, reason: `zip_gamestate_not_text entry=${preferred} sample=${logSafeTextSample(text)}` };
+      if (looksLikeTextSave(text)) return { ok: true, text, source: 'zip:' + preferred };
+
+      // Normal HOI4 saves can be binary data inside the .hoi4 ZIP. Try the experimental binary reader.
+      const melted = meltBinaryHoi4(inner, log);
+      if (melted.text && melted.text.length > 100) {
+        return { ok: true, text: melted.text, source: 'zip-binary:' + preferred, binaryDiagnostics: melted.diagnostics };
       }
-      return { ok: true, text, source: 'zip:' + preferred };
+      return { ok: false, reason: `zip_gamestate_not_readable entry=${preferred} sample=${logSafeTextSample(text)}` };
     } catch (err) {
       log(`[WARN] ZIP read failed for ${file.name}: ${err.message}`);
       return { ok: false, reason: 'zip_read_failed_' + err.message };
@@ -37,9 +43,14 @@ export async function readHoi4SaveFile(file, log = () => {}) {
   const text = decoder.decode(bytes);
   if (looksLikeTextSave(text)) return { ok: true, text, source: 'plain' };
 
-  // Some binary saves start with HOI4bin or contain many NUL bytes. Those need the game set to text saves.
+  // Try direct binary HOI4 save melting.
+  const melted = meltBinaryHoi4(bytes, log);
+  if (melted.text && melted.text.length > 100) {
+    return { ok: true, text: melted.text, source: 'binary', binaryDiagnostics: melted.diagnostics };
+  }
+
   const nulCount = bytes.slice(0, Math.min(bytes.length, 4096)).filter(b => b === 0).length;
-  return { ok: false, reason: nulCount > 8 ? 'binary_save_enable_text_saves' : 'not_recognised_as_text_save' };
+  return { ok: false, reason: nulCount > 8 ? 'binary_save_unreadable' : 'not_recognised_as_text_save' };
 }
 
 function looksLikeTextSave(text) {
@@ -106,7 +117,11 @@ function parseDate(text, fallbackName = '') {
 export function parseSnapshot(text, fileName = '') {
   const date = parseDate(text, fileName);
   const statesBlock = findBlock(text, 'states');
-  if (!statesBlock) return { ok: false, reason: 'no_states_block' };
+  if (!statesBlock) {
+    const inferred = inferStatesFromMeltedBinary(text, fileName);
+    if (inferred.ok) return inferred;
+    return { ok: false, reason: inferred.reason || 'no_states_block', diagnostics: inferred.diagnostics };
+  }
 
   const states = {};
   for (const st of iterNumberedBlocks(statesBlock.body)) {
