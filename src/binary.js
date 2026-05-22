@@ -125,7 +125,8 @@ export function parseBinaryHoi4Snapshot(bytes, fileName = '', log = () => {}) {
   const stack = [];
   let pending = null;
   let afterEquals = null;
-  const candidates = new Map(); // key token -> Map(state id -> controller tag)
+  const candidates = new Map(); // key token -> Map(numbered block id -> controller tag)
+  const numericCandidates = new Map(); // key token -> Map(numbered block id -> numeric value), diagnostics only
   let dateDays = null;
   let dateSource = null;
   let dateOffset = null;
@@ -134,15 +135,20 @@ export function parseBinaryHoi4Snapshot(bytes, fileName = '', log = () => {}) {
   const dateCandidates = headerDateCandidates(bytes);
   const headerTrace = parseHeaderTokenTrace(bytes);
 
-  const putCandidate = (key, stateId, tag) => {
+  const putCandidate = (key, blockId, tag) => {
     if (!candidates.has(key)) candidates.set(key, new Map());
-    candidates.get(key).set(stateId, tag);
+    candidates.get(key).set(blockId, tag);
   };
 
-  const findStateId = () => {
+  const putNumericCandidate = (key, blockId, value) => {
+    if (!numericCandidates.has(key)) numericCandidates.set(key, new Map());
+    numericCandidates.get(key).set(blockId, value);
+  };
+
+  const findNumberedBlockId = (maxId = 30000) => {
     for (let i = stack.length - 1; i >= 0; i--) {
       const item = stack[i];
-      if (item && item.kind === 'number' && Number.isInteger(item.value) && item.value >= 1 && item.value <= 5000) {
+      if (item && item.kind === 'number' && Number.isInteger(item.value) && item.value >= 1 && item.value <= maxId) {
         return item.value;
       }
     }
@@ -206,11 +212,19 @@ export function parseBinaryHoi4Snapshot(bytes, fileName = '', log = () => {}) {
       afterEquals = null;
     }
 
+    if (kind === 'number' && afterEquals) {
+      const blockId = findNumberedBlockId(30000);
+      if (blockId !== null && Number.isFinite(value) && value >= 0 && value <= 1000000) {
+        putNumericCandidate(afterEquals.token, blockId, value);
+      }
+      afterEquals = null;
+    }
+
     if (kind === 'string' && afterEquals) {
       const tag = typeof value === 'string' ? value.trim() : '';
       if (/^[A-Z0-9_]{3}$/.test(tag) && !['YES','NOT','AND','ADD','TAG','DAY'].includes(tag)) {
-        const stateId = findStateId();
-        if (stateId !== null) putCandidate(afterEquals.token, stateId, tag);
+        const blockId = findNumberedBlockId(30000);
+        if (blockId !== null) putCandidate(afterEquals.token, blockId, tag);
       }
       afterEquals = null;
     }
@@ -221,41 +235,64 @@ export function parseBinaryHoi4Snapshot(bytes, fileName = '', log = () => {}) {
   }
 
   const ranked = [...candidates.entries()]
-    .map(([key, map]) => ({ key, count: map.size, map }))
-    .filter(x => x.count >= 30)
+    .map(([key, map]) => {
+      const ids = [...map.keys()].sort((a, b) => a - b);
+      return { key, count: map.size, map, minId: ids[0] ?? null, maxId: ids[ids.length - 1] ?? null };
+    })
+    .filter(x => x.count >= 3)
     .sort((a, b) => b.count - a.count);
 
-  const best = ranked[0];
-  if (!best) {
-    return { ok: false, reason: 'binary_fast_no_state_candidates', diagnostics: { tokensRead, bytesRead: pos, bytesTotal: bytes.length, hardStops, dateCandidates: dateCandidates.slice(0,120), headerTrace: headerTrace.slice(0,180), candidates: [] } };
+  const numericRanked = [...numericCandidates.entries()]
+    .map(([key, map]) => {
+      const ids = [...map.keys()].sort((a, b) => a - b);
+      const values = [...map.values()];
+      return { key, count: map.size, minId: ids[0] ?? null, maxId: ids[ids.length - 1] ?? null, uniqueValues: new Set(values).size, minValue: Math.min(...values), maxValue: Math.max(...values) };
+    })
+    .filter(x => x.count >= 10)
+    .sort((a, b) => b.count - a.count);
+
+  const stateCandidate = ranked.find(x => x.count >= 800 && x.maxId <= 2000) || ranked.find(x => x.count >= 30 && x.maxId <= 5000) || ranked[0];
+  // Province-control overrides, when present, should appear as tag assignments on numbered province blocks.
+  // They are often sparse because unchanged provinces inherit from state control. Keep them separate from states.
+  const provinceCandidate = ranked.find(x => x !== stateCandidate && x.maxId > 1046 && x.count >= 3) || null;
+
+  if (!stateCandidate && !provinceCandidate) {
+    return { ok: false, reason: 'binary_fast_no_state_or_province_candidates', diagnostics: { tokensRead, bytesRead: pos, bytesTotal: bytes.length, hardStops, dateCandidates: dateCandidates.slice(0,120), headerTrace: headerTrace.slice(0,180), candidates: [], numericCandidates: numericRanked.slice(0, 12).map(x => ({ key: `TOKEN_${x.key}`, count: x.count, minId: x.minId, maxId: x.maxId, uniqueValues: x.uniqueValues, minValue: x.minValue, maxValue: x.maxValue })) } };
   }
 
   const states = {};
-  for (const [id, tag] of best.map.entries()) states[String(id)] = tag;
+  if (stateCandidate) for (const [id, tag] of stateCandidate.map.entries()) states[String(id)] = tag;
+  const provinces = {};
+  if (provinceCandidate) for (const [id, tag] of provinceCandidate.map.entries()) provinces[String(id)] = tag;
   const date = dateFromGameDays(dateDays) || parseDateFromName(fileName);
   return {
     ok: true,
     date,
     fileName,
     states,
+    provinces,
     binaryFallback: true,
     diagnostics: {
-      mode: 'binary_fast',
+      mode: 'binary_fast_province_experimental',
       tokensRead,
       bytesRead: pos,
       bytesTotal: bytes.length,
       hardStops,
-      chosenKey: `TOKEN_${best.key}`,
-      chosenCount: best.count,
+      chosenKey: stateCandidate ? `TOKEN_${stateCandidate.key}` : null,
+      chosenCount: stateCandidate ? stateCandidate.count : 0,
+      chosenProvinceKey: provinceCandidate ? `TOKEN_${provinceCandidate.key}` : null,
+      chosenProvinceCount: provinceCandidate ? provinceCandidate.count : 0,
       inferredStates: Object.keys(states).length,
+      inferredProvinces: Object.keys(provinces).length,
       dateDays,
       dateSource,
       dateOffset,
-      parserVersion: 'v17',
+      parserVersion: 'v19-province-experimental',
       dateBase: dateDays !== null ? 'TOKEN_10314_save_menu_clock_60759361_plus_24h_per_day' : null,
       dateCandidates: dateCandidates.slice(0, 120),
       headerTrace: headerTrace.slice(0, 180),
-      candidates: ranked.slice(0, 8).map(x => ({ key: `TOKEN_${x.key}`, count: x.count }))
+      candidates: ranked.slice(0, 12).map(x => ({ key: `TOKEN_${x.key}`, count: x.count, minId: x.minId, maxId: x.maxId })),
+      numericCandidates: numericRanked.slice(0, 12).map(x => ({ key: `TOKEN_${x.key}`, count: x.count, minId: x.minId, maxId: x.maxId, uniqueValues: x.uniqueValues, minValue: x.minValue, maxValue: x.maxValue }))
     }
   };
 }

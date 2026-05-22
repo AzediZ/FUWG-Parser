@@ -149,12 +149,25 @@ function parseDate(text, fallbackName = '') {
   return null;
 }
 
+
+function parseProvinceControllerBlocks(text) {
+  const provincesBlock = findBlock(text, 'provinces');
+  if (!provincesBlock) return {};
+  const provinces = {};
+  for (const pr of iterNumberedBlocks(provincesBlock.body)) {
+    let controller = getToken(pr.body, 'controller') || getToken(pr.body, 'owner') || getToken(pr.body, 'controller_tag');
+    if (!controller || controller === '---') continue;
+    provinces[pr.id] = controller;
+  }
+  return provinces;
+}
+
 export function parseSnapshot(text, fileName = '', dateHint = null) {
   const date = parseDate(text, fileName) || dateHint || null;
   const statesBlock = findBlock(text, 'states');
   if (!statesBlock) {
     const inferred = inferStatesFromMeltedBinary(text, fileName, date);
-    if (inferred.ok) return inferred;
+    if (inferred.ok) return { ...inferred, provinces: inferred.provinces || {} };
     return { ok: false, reason: inferred.reason || 'no_states_block', diagnostics: inferred.diagnostics };
   }
 
@@ -164,7 +177,8 @@ export function parseSnapshot(text, fileName = '', dateHint = null) {
     if (!controller || controller === '---') controller = null;
     states[st.id] = controller;
   }
-  return { ok: true, date, fileName, states };
+  const provinces = parseProvinceControllerBlocks(text);
+  return { ok: true, date, fileName, states, provinces };
 }
 
 export function buildTimeline(rawSnapshots) {
@@ -175,40 +189,70 @@ export function buildTimeline(rawSnapshots) {
   }
   const ordered = [...byKey.values()].sort((a, b) => (a.date || a.fileName).localeCompare(b.date || b.fileName));
   const knownStates = new Set();
-  for (const s of ordered) Object.keys(s.states).forEach(id => knownStates.add(id));
+  const knownProvinces = new Set();
+  for (const s of ordered) {
+    Object.keys(s.states || {}).forEach(id => knownStates.add(id));
+    Object.keys(s.provinces || {}).forEach(id => knownProvinces.add(id));
+  }
 
-  const last = {};
+  const lastStates = {};
+  const lastProvinces = {};
   let carriedForwardControllers = 0;
+  let carriedForwardProvinceControllers = 0;
+  const stateIds = [...knownStates].sort((a, b) => Number(a) - Number(b));
+  const provinceIds = [...knownProvinces].sort((a, b) => Number(a) - Number(b));
+
   const snapshots = ordered.map(s => {
-    const full = {};
-    const ids = [...knownStates].sort((a, b) => Number(a) - Number(b));
-    for (const id of ids) {
-      const current = s.states[id];
+    const fullStates = {};
+    for (const id of stateIds) {
+      const current = (s.states || {})[id];
       if (current) {
-        full[id] = current;
-        last[id] = current;
-      } else if (last[id]) {
-        full[id] = last[id];
+        fullStates[id] = current;
+        lastStates[id] = current;
+      } else if (lastStates[id]) {
+        fullStates[id] = lastStates[id];
         carriedForwardControllers++;
       } else {
-        full[id] = 'NUL';
+        fullStates[id] = 'NUL';
       }
     }
-    return { date: s.date, file: s.fileName, states: full };
+
+    const fullProvinces = {};
+    for (const id of provinceIds) {
+      const current = (s.provinces || {})[id];
+      if (current) {
+        fullProvinces[id] = current;
+        lastProvinces[id] = current;
+      } else if (lastProvinces[id]) {
+        fullProvinces[id] = lastProvinces[id];
+        carriedForwardProvinceControllers++;
+      } else {
+        fullProvinces[id] = 'NUL';
+      }
+    }
+    return { date: s.date, file: s.fileName, states: fullStates, provinces: fullProvinces };
   });
 
   const stateControllerTimeline = {};
-  for (const id of [...knownStates].sort((a, b) => Number(a) - Number(b))) {
+  for (const id of stateIds) {
     stateControllerTimeline[id] = snapshots.map(s => ({ date: s.date, controller: s.states[id] }));
+  }
+
+  const provinceControllerTimeline = {};
+  for (const id of provinceIds) {
+    provinceControllerTimeline[id] = snapshots.map(s => ({ date: s.date, controller: s.provinces[id] }));
   }
 
   return {
     snapshots,
     stateControllerTimeline,
+    provinceControllerTimeline,
     diagnostics: {
       snapshots: snapshots.length,
       states: knownStates.size,
-      carriedForwardControllers
+      provinces: knownProvinces.size,
+      carriedForwardControllers,
+      carriedForwardProvinceControllers
     }
   };
 }

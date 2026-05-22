@@ -16,6 +16,7 @@ const els = {
   saveCount: document.getElementById('saveCount'),
   snapshotCount: document.getElementById('snapshotCount'),
   stateCount: document.getElementById('stateCount'),
+  provinceCount: document.getElementById('provinceCount'),
   carryCount: document.getElementById('carryCount')
 };
 
@@ -34,6 +35,7 @@ function log(msg) {
 function setStats(diag = {}) {
   els.snapshotCount.textContent = diag.snapshots ?? 0;
   els.stateCount.textContent = diag.states ?? 0;
+  if (els.provinceCount) els.provinceCount.textContent = diag.provinces ?? 0;
   els.carryCount.textContent = diag.carriedForwardControllers ?? 0;
 }
 
@@ -85,7 +87,7 @@ function clearCapturedData() {
   parseDiagnostics = [];
   latestZipBlob = null;
   els.downloadBtn.disabled = true;
-  setStats({ snapshots: 0, states: 0, carriedForwardControllers: 0 });
+  setStats({ snapshots: 0, states: 0, provinces: 0, carriedForwardControllers: 0 });
   log('[INFO] Cleared captured snapshots/diagnostics. Existing seen-file markers were kept, so watch mode will still ignore saves that were already present.');
 }
 
@@ -155,8 +157,8 @@ async function parseFiles(files, onlyChanged = false) {
     }
     const parsedKey = snap.date ? `${snap.date}:${file.name}` : sig;
     parsed.set(parsedKey, snap);
-    parseDiagnostics.push({ file: file.name, key: parsedKey, stage: 'parsed', source: read.source, date: snap.date || null, states: Object.keys(snap.states).length, binaryFallback: !!snap.binaryFallback, diagnostics: snap.diagnostics, binaryDiagnostics: read.binaryDiagnostics });
-    log(`[OK] Parsed ${file.name}${snap.date ? ' -> ' + snap.date : ''} (${Object.keys(snap.states).length} states, source=${read.source}${snap.binaryFallback ? ', inferred binary state blocks' : ''})`);
+    parseDiagnostics.push({ file: file.name, key: parsedKey, stage: 'parsed', source: read.source, date: snap.date || null, states: Object.keys(snap.states || {}).length, provinces: Object.keys(snap.provinces || {}).length, binaryFallback: !!snap.binaryFallback, diagnostics: snap.diagnostics, binaryDiagnostics: read.binaryDiagnostics });
+    log(`[OK] Parsed ${file.name}${snap.date ? ' -> ' + snap.date : ''} (${Object.keys(snap.states || {}).length} states, ${Object.keys(snap.provinces || {}).length} province overrides, source=${read.source}${snap.binaryFallback ? ', inferred binary blocks' : ''})`);
   }
 
   if (onlyChanged && changed === 0) {
@@ -177,7 +179,7 @@ async function updateExport() {
   const diagnostics = {
     generatedAt: new Date().toISOString(),
     source: 'HOI4 Game Log Parser Web',
-    parserVersion: 'v18',
+    parserVersion: 'v19-province-overrides',
     ...timeline.diagnostics,
     dateOverride,
     parsedFiles: parseDiagnostics.filter(d => d.stage === 'parsed').map(d => d.file),
@@ -187,11 +189,12 @@ async function updateExport() {
     game: { title: 'Game Log Export', generatedAt: diagnostics.generatedAt },
     snapshots: timeline.snapshots,
     stateControllerTimeline: timeline.stateControllerTimeline,
+    provinceControllerTimeline: timeline.provinceControllerTimeline,
     diagnostics
   });
   els.downloadBtn.disabled = timeline.snapshots.length === 0 && parseDiagnostics.length === 0;
   setStats(timeline.diagnostics);
-  log(`[OK] Updated export: ${timeline.diagnostics.snapshots} snapshots, ${timeline.diagnostics.states} states, ${timeline.diagnostics.carriedForwardControllers} carried-forward controllers.`);
+  log(`[OK] Updated export: ${timeline.diagnostics.snapshots} snapshots, ${timeline.diagnostics.states} states, ${timeline.diagnostics.provinces} province overrides, ${timeline.diagnostics.carriedForwardControllers} carried-forward state controllers.`);
   if (timeline.snapshots.length) {
     const dates = timeline.snapshots.map(s => s.date || 'NO_DATE');
     const preview = dates.length <= 12 ? dates.join(', ') : `${dates.slice(0, 6).join(', ')} ... ${dates.slice(-6).join(', ')}`;
@@ -271,7 +274,7 @@ els.latestDateOverride.addEventListener('change', () => {
 });
 els.fileFallback.addEventListener('change', async (e) => {
   els.log.textContent = '';
-  log('[INFO] Version v18 autosave-only live mode loaded.');
+  log('[INFO] Version v19 province-overrides test loaded.');
   fallbackFiles = filterAutosaveFiles([...e.target.files].filter(f => /\.hoi4$/i.test(f.name)), 'folder fallback').sort((a,b)=>a.name.localeCompare(b.name));
   dirHandle = null;
   seen.clear();
@@ -287,7 +290,7 @@ els.fileFallback.addEventListener('change', async (e) => {
 
 els.folderFallback.addEventListener('change', async (e) => {
   els.log.textContent = '';
-  log('[INFO] Version v18 autosave-only live mode loaded.');
+  log('[INFO] Version v19 province-overrides test loaded.');
   fallbackFiles = filterAutosaveFiles([...e.target.files].filter(f => /\.hoi4$/i.test(f.name)), 'folder fallback').sort((a,b)=>a.name.localeCompare(b.name));
   dirHandle = null;
   seen.clear();

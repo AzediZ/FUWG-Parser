@@ -73,3 +73,8 @@ Adds a full top-header token trace and date-candidate dump for normal `.hoi4` bi
 ## v18 note
 
 Live folder mode is now autosave-only. The parser only scans `autosave.hoi4`, `autosave_1.hoi4`, `autosave_2.hoi4`, and matching numbered autosaves, so large save folders full of manual saves should not slow each watch check.
+
+
+## v19 province-overrides test
+
+This version keeps state-controller snapshots and also attempts to export province-controller overrides when normal `.hoi4` binary saves expose them. The export includes `province_controller_timeline.json`, and each snapshot contains a `provinces` object. For unchanged provinces, saves may not expose individual province controllers; in that case the renderer should fall back to state control.
