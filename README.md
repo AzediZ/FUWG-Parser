@@ -38,3 +38,8 @@ Fixed the `Watch new saves only` button being left disabled after selecting a sa
 ## v8 note
 
 The watch buttons are no longer greyed out by default. They stay clickable and give a clear warning if the browser is using the manual fallback instead of the live Chrome/Edge folder picker. Added a manual folder fallback for local testing.
+
+
+## v9 note
+
+Added a latest in-game date correction box. If the experimental binary date is wrong, enter the latest/current in-game date before downloading. The export shifts all captured snapshot dates by the same offset, keeping the spacing between autosaves intact. Added a Clear captured data button for restarting a test without refreshing the page.

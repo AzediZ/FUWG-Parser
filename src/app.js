@@ -6,6 +6,8 @@ const els = {
   parseBtn: document.getElementById('parseBtn'),
   watchBtn: document.getElementById('watchBtn'),
   downloadBtn: document.getElementById('downloadBtn'),
+  clearBtn: document.getElementById('clearBtn'),
+  latestDateOverride: document.getElementById('latestDateOverride'),
   watchNewOnlyBtn: document.getElementById('watchNewOnlyBtn'),
   fileFallback: document.getElementById('fileFallback'),
   folderFallback: document.getElementById('folderFallback'),
@@ -33,6 +35,45 @@ function setStats(diag = {}) {
   els.snapshotCount.textContent = diag.snapshots ?? 0;
   els.stateCount.textContent = diag.states ?? 0;
   els.carryCount.textContent = diag.carriedForwardControllers ?? 0;
+}
+
+function parseIsoDate(value) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [y, m, d] = value.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null;
+  return dt;
+}
+function shiftIsoDate(value, offsetDays) {
+  const dt = parseIsoDate(value);
+  if (!dt || !Number.isFinite(offsetDays)) return value;
+  dt.setUTCDate(dt.getUTCDate() + offsetDays);
+  return dt.toISOString().slice(0, 10);
+}
+function applyLatestDateOverride(timeline) {
+  const target = parseIsoDate(els.latestDateOverride.value);
+  if (!target || !timeline.snapshots.length) return null;
+  const dated = timeline.snapshots.filter(s => /^\d{4}-\d{2}-\d{2}$/.test(s.date || ''));
+  if (!dated.length) return null;
+  const originalLastDate = dated[dated.length - 1].date;
+  const originalLast = parseIsoDate(originalLastDate);
+  const offsetDays = Math.round((target.getTime() - originalLast.getTime()) / 86400000);
+  if (!Number.isFinite(offsetDays) || offsetDays === 0) {
+    return { applied: offsetDays === 0, targetLatestDate: els.latestDateOverride.value, originalLastDate, offsetDays: 0 };
+  }
+  for (const snap of timeline.snapshots) snap.date = shiftIsoDate(snap.date, offsetDays);
+  for (const entries of Object.values(timeline.stateControllerTimeline)) {
+    for (const entry of entries) entry.date = shiftIsoDate(entry.date, offsetDays);
+  }
+  return { applied: true, targetLatestDate: els.latestDateOverride.value, originalLastDate, offsetDays };
+}
+function clearCapturedData() {
+  parsed.clear();
+  parseDiagnostics = [];
+  latestZipBlob = null;
+  els.downloadBtn.disabled = true;
+  setStats({ snapshots: 0, states: 0, carriedForwardControllers: 0 });
+  log('[INFO] Cleared captured snapshots/diagnostics. Existing seen-file markers were kept, so watch mode will still ignore saves that were already present.');
 }
 
 async function selectFolder() {
@@ -116,10 +157,13 @@ async function parseFiles(files, onlyChanged = false) {
 
 async function updateExport() {
   const timeline = buildTimeline([...parsed.values()]);
+  const dateOverride = applyLatestDateOverride(timeline);
+  if (dateOverride?.applied) log(`[INFO] Applied latest-date correction: ${dateOverride.originalLastDate} -> ${dateOverride.targetLatestDate} (${dateOverride.offsetDays >= 0 ? '+' : ''}${dateOverride.offsetDays} days).`);
   const diagnostics = {
     generatedAt: new Date().toISOString(),
     source: 'HOI4 Game Log Parser Web',
     ...timeline.diagnostics,
+    dateOverride,
     parsedFiles: parseDiagnostics.filter(d => d.stage === 'parsed').map(d => d.file),
     parseDiagnostics
   };
@@ -200,6 +244,10 @@ els.watchNewOnlyBtn.addEventListener('click', async () => {
   }
 });
 els.downloadBtn.addEventListener('click', downloadZip);
+els.clearBtn.addEventListener('click', clearCapturedData);
+els.latestDateOverride.addEventListener('change', () => {
+  if (parsed.size) updateExport().catch(e => log('[ERROR] ' + e.message));
+});
 els.fileFallback.addEventListener('change', async (e) => {
   els.log.textContent = '';
   fallbackFiles = [...e.target.files].filter(f => /\.hoi4$/i.test(f.name)).sort((a,b)=>a.name.localeCompare(b.name));

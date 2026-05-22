@@ -17,7 +17,7 @@
       <h2>Save folder location</h2>
       <p>Typical Windows folder:</p>
       <code>Documents\Paradox Interactive\Hearts of Iron IV\save games</code>
-      <p class="muted">The browser can only read files/folders you manually select. Normal .hoi4 binary saves are attempted using the experimental local binary fallback; no change to HOI4 save settings is required. After selecting the folder, use “Watch new saves only” at the start of a session to ignore existing autosaves and capture new/changed autosaves as the game runs.</p>
+      <p class="muted">The browser can only read files/folders you manually select. Normal .hoi4 binary saves are attempted using the experimental local binary fallback; no change to HOI4 save settings is required. After selecting the folder, use “Watch new saves only” at the start of a session to ignore existing autosaves and capture new/changed autosaves as the game runs. If the displayed save date is wrong, enter the latest/current in-game date before downloading; the export will shift all captured snapshots to match that date while keeping the same spacing between autosaves.</p>
     </section>
 
     <section class="card controls">
@@ -26,8 +26,12 @@
       <button id="watchBtn">Start watching</button>
       <button id="watchNewOnlyBtn">Watch new saves only</button>
       <button id="downloadBtn" disabled>Download gamelog export.zip</button>
+      <button id="clearBtn">Clear captured data</button>
       <label class="interval">Check every
         <input id="pollSeconds" type="number" min="2" max="60" value="5" /> seconds
+      </label>
+      <label class="interval">Latest in-game date
+        <input id="latestDateOverride" type="date" />
       </label>
       <input id="fileFallback" type="file" multiple accept=".hoi4,.txt,.save" />
       <label for="fileFallback" class="fallback">Fallback: select save files manually</label>
