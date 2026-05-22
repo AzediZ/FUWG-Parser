@@ -11,49 +11,95 @@ function dateFromGameDays(days) {
   return d.toISOString().slice(0, 10);
 }
 
-function headerDateCandidates(bytes, maxBytes = 8192) {
-  const out = [];
+
+function parseHeaderTokenTrace(bytes, maxBytes = 4096) {
+  const trace = [];
   let pos = bytes.length >= 7 && String.fromCharCode(...bytes.slice(0, 7)) === 'HOI4bin' ? 7 : 0;
   let pending = null;
   let afterEquals = null;
   let depth = 0;
-  while (pos + 2 <= bytes.length && pos < Math.min(bytes.length, maxBytes)) {
+
+  while (pos + 2 <= bytes.length && pos < Math.min(bytes.length, maxBytes) && trace.length < 250) {
     const off = pos;
     const token = u16(bytes, pos); pos += 2;
     let kind = 'key';
     let value = null;
-    if (token === 12) { if (pos + 4 > bytes.length) break; kind = 'number'; value = i32(bytes, pos); pos += 4; }
-    else if (token === 20) { if (pos + 4 > bytes.length) break; kind = 'number'; value = u32(bytes, pos); pos += 4; }
-    else if (token === 359 || token === 668) { if (pos + 8 > bytes.length) break; kind = 'number'; value = readI64AsNumber(bytes, pos, token === 668); pos += 8; }
-    else if (token === 15 || token === 23) {
-      if (pos + 2 > bytes.length) break;
-      const len = u16(bytes, pos); pos += 2;
-      if (len < 0 || len > 65535 || pos + len > bytes.length) break;
-      kind = 'string'; value = decodeUtf8(bytes, pos, len); pos += len;
-    }
-    else if (token === 14) { if (pos >= bytes.length) break; kind = 'bool'; value = bytes[pos++]; }
-    else if (token === 1) kind = 'equals';
-    else if (token === 3) kind = 'open';
-    else if (token === 4) kind = 'close';
+    let valueOffset = pos;
 
-    if (kind === 'equals') { afterEquals = pending; continue; }
+    try {
+      if (token === 12) { if (pos + 4 > bytes.length) break; kind = 'number'; value = i32(bytes, pos); pos += 4; }
+      else if (token === 13) { if (pos + 4 > bytes.length) break; kind = 'number'; value = i32(bytes, pos); pos += 4; }
+      else if (token === 20) { if (pos + 4 > bytes.length) break; kind = 'number'; value = u32(bytes, pos); pos += 4; }
+      else if (token === 359 || token === 668) { if (pos + 8 > bytes.length) break; kind = 'number'; value = readI64AsNumber(bytes, pos, token === 668); pos += 8; }
+      else if (token === 15 || token === 23) {
+        if (pos + 2 > bytes.length) break;
+        const len = u16(bytes, pos); pos += 2;
+        if (len < 0 || len > 65535 || pos + len > bytes.length) break;
+        kind = 'string'; value = decodeUtf8(bytes, pos, len); pos += len;
+      }
+      else if (token === 14) { if (pos >= bytes.length) break; kind = 'bool'; value = bytes[pos++]; }
+      else if (token === 1) kind = 'equals';
+      else if (token === 3) kind = 'open';
+      else if (token === 4) kind = 'close';
+    } catch (_) { break; }
+
+    const item = {
+      index: trace.length,
+      offset: off,
+      token,
+      tokenName: `TOKEN_${token}`,
+      kind,
+      value: typeof value === 'string' && value.length > 120 ? value.slice(0, 120) + '…' : value,
+      valueOffset,
+      depth
+    };
+
+    if (kind === 'equals') {
+      item.assignsFrom = pending ? `TOKEN_${pending.token}` : null;
+      afterEquals = pending;
+      trace.push(item);
+      continue;
+    }
+
+    if (afterEquals && (kind === 'number' || kind === 'string' || kind === 'bool')) {
+      item.assignedKey = `TOKEN_${afterEquals.token}`;
+      item.assignedKeyOffset = afterEquals.off;
+    }
+
+    trace.push(item);
+
     if (kind === 'open') { depth++; afterEquals = null; continue; }
     if (kind === 'close') { depth = Math.max(0, depth - 1); continue; }
-    if (kind === 'number' && afterEquals && Number.isFinite(value) && value >= 0 && value <= 20000) {
-      out.push({
-        key: `TOKEN_${afterEquals.token}`,
-        value,
-        date: dateFromGameDays(value),
-        valueOffset: off,
-        keyOffset: afterEquals.off,
-        depth
-      });
-      afterEquals = null;
-    }
+    if (kind === 'number' || kind === 'string' || kind === 'bool') afterEquals = null;
     if (kind === 'key' || kind === 'number' || kind === 'string') pending = { kind, token, value, off };
   }
-  return out;
+  return trace;
 }
+
+function dateFromEpoch(days, y, m, d) {
+  if (!Number.isFinite(days) || days < -10000 || days > 50000) return null;
+  const start = Date.UTC(y, m - 1, d);
+  const dt = new Date(start + days * 86400000);
+  return dt.toISOString().slice(0, 10);
+}
+
+function headerDateCandidates(bytes, maxBytes = 4096) {
+  const trace = parseHeaderTokenTrace(bytes, maxBytes);
+  return trace
+    .filter(x => x.assignedKey && x.kind === 'number' && Number.isFinite(x.value) && x.value >= 0 && x.value <= 20000)
+    .map(x => ({
+      key: x.assignedKey,
+      value: x.value,
+      offset: x.offset,
+      keyOffset: x.assignedKeyOffset,
+      depth: x.depth,
+      as1936Jan01: dateFromEpoch(x.value, 1936, 1, 1),
+      as1935Dec10: dateFromEpoch(x.value, 1935, 12, 10),
+      as1935Nov06: dateFromEpoch(x.value, 1935, 11, 6),
+      as1935Oct31: dateFromEpoch(x.value, 1935, 10, 31)
+    }));
+}
+
 
 export function parseBinaryHoi4Snapshot(bytes, fileName = '', log = () => {}) {
   const startsHoi4 = bytes.length >= 7 && String.fromCharCode(...bytes.slice(0, 7)) === 'HOI4bin';
@@ -68,6 +114,7 @@ export function parseBinaryHoi4Snapshot(bytes, fileName = '', log = () => {}) {
   let tokensRead = 0;
   let hardStops = 0;
   const dateCandidates = headerDateCandidates(bytes);
+  const headerTrace = parseHeaderTokenTrace(bytes);
 
   const putCandidate = (key, stateId, tag) => {
     if (!candidates.has(key)) candidates.set(key, new Map());
@@ -162,7 +209,7 @@ export function parseBinaryHoi4Snapshot(bytes, fileName = '', log = () => {}) {
 
   const best = ranked[0];
   if (!best) {
-    return { ok: false, reason: 'binary_fast_no_state_candidates', diagnostics: { tokensRead, bytesRead: pos, bytesTotal: bytes.length, hardStops, dateCandidates: dateCandidates.slice(0,80), candidates: [] } };
+    return { ok: false, reason: 'binary_fast_no_state_candidates', diagnostics: { tokensRead, bytesRead: pos, bytesTotal: bytes.length, hardStops, dateCandidates: dateCandidates.slice(0,120), headerTrace: headerTrace.slice(0,180), candidates: [] } };
   }
 
   const states = {};
@@ -186,9 +233,10 @@ export function parseBinaryHoi4Snapshot(bytes, fileName = '', log = () => {}) {
       dateDays,
       dateSource,
       dateOffset,
-      parserVersion: 'v14',
+      parserVersion: 'v15',
       dateBase: dateDays !== null ? '1936-01-01_plus_days' : null,
-      dateCandidates: dateCandidates.slice(0, 80),
+      dateCandidates: dateCandidates.slice(0, 120),
+      headerTrace: headerTrace.slice(0, 180),
       candidates: ranked.slice(0, 8).map(x => ({ key: `TOKEN_${x.key}`, count: x.count }))
     }
   };
@@ -241,6 +289,7 @@ export function meltBinaryHoi4(bytes, log = () => {}) {
   let tokensRead = 0;
   let hardStops = 0;
   const dateCandidates = headerDateCandidates(bytes);
+  const headerTrace = parseHeaderTokenTrace(bytes);
 
   while (pos + 2 <= bytes.length) {
     const number = u16(bytes, pos); pos += 2; tokensRead++;
