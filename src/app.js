@@ -8,6 +8,7 @@ const els = {
   downloadBtn: document.getElementById('downloadBtn'),
   watchNewOnlyBtn: document.getElementById('watchNewOnlyBtn'),
   fileFallback: document.getElementById('fileFallback'),
+  folderFallback: document.getElementById('folderFallback'),
   pollSeconds: document.getElementById('pollSeconds'),
   log: document.getElementById('log'),
   saveCount: document.getElementById('saveCount'),
@@ -37,7 +38,9 @@ function setStats(diag = {}) {
 async function selectFolder() {
   els.log.textContent = '';
   if (!window.showDirectoryPicker) {
-    log('[WARN] Folder selection is not supported in this browser. Use Chrome/Edge or the manual file fallback.');
+    log('[WARN] Live folder watching is only available through the browser folder picker on Chrome/Edge over HTTPS or localhost.');
+    log('[INFO] Opening the manual folder fallback instead. This can parse selected files, but it cannot live-watch new autosaves.');
+    els.folderFallback.click();
     return;
   }
   dirHandle = await window.showDirectoryPicker({ mode: 'read' });
@@ -47,10 +50,12 @@ async function selectFolder() {
   parseDiagnostics = [];
   latestZipBlob = null;
   els.parseBtn.disabled = false;
+  // Keep watch buttons clickable so they never appear broken/greyed out; handlers validate source support.
   els.watchBtn.disabled = false;
   els.watchNewOnlyBtn.disabled = false;
   els.downloadBtn.disabled = true;
-  log(`Selected folder: ${dirHandle.name}`);
+  log(`Selected live folder: ${dirHandle.name}`);
+  log('[INFO] Live watch is available for this folder.');
 }
 
 async function collectFilesFromFolder() {
@@ -150,6 +155,10 @@ async function markExistingAsSeen() {
 }
 
 function toggleWatch() {
+  if (!dirHandle) {
+    log('[WARN] Live watching needs the Chrome/Edge folder picker. Click “Select save folder” and allow folder access, or host this repo on GitHub Pages/localhost. Manual fallback files can be parsed, but cannot be live-watched.');
+    return;
+  }
   if (watchTimer) {
     clearInterval(watchTimer);
     watchTimer = null;
@@ -200,8 +209,24 @@ els.fileFallback.addEventListener('change', async (e) => {
   parseDiagnostics = [];
   latestZipBlob = null;
   els.parseBtn.disabled = fallbackFiles.length === 0;
-  els.watchBtn.disabled = true;
-  els.watchNewOnlyBtn.disabled = true;
+  els.watchBtn.disabled = false;
+  els.watchNewOnlyBtn.disabled = false;
   els.downloadBtn.disabled = true;
   log(`Selected ${fallbackFiles.length} save file(s) manually.`);
+});
+
+els.folderFallback.addEventListener('change', async (e) => {
+  els.log.textContent = '';
+  fallbackFiles = [...e.target.files].filter(f => /\.hoi4$/i.test(f.name)).sort((a,b)=>a.name.localeCompare(b.name));
+  dirHandle = null;
+  seen.clear();
+  parsed.clear();
+  parseDiagnostics = [];
+  latestZipBlob = null;
+  els.parseBtn.disabled = fallbackFiles.length === 0;
+  els.watchBtn.disabled = false;
+  els.watchNewOnlyBtn.disabled = false;
+  els.downloadBtn.disabled = true;
+  log(`Selected ${fallbackFiles.length} save file(s) from folder fallback.`);
+  log('[INFO] Folder fallback can parse the selected files, but browsers do not refresh this selection as new autosaves appear. Use GitHub Pages/localhost with Chrome/Edge for live watching.');
 });

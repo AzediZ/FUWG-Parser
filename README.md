@@ -33,3 +33,8 @@ HOI4's normal `.hoi4` saves may contain binary-encoded gamestate data. This repo
 ## v7 note
 
 Fixed the `Watch new saves only` button being left disabled after selecting a save folder.
+
+
+## v8 note
+
+The watch buttons are no longer greyed out by default. They stay clickable and give a clear warning if the browser is using the manual fallback instead of the live Chrome/Edge folder picker. Added a manual folder fallback for local testing.
