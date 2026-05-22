@@ -43,3 +43,8 @@ The watch buttons are no longer greyed out by default. They stay clickable and g
 ## v9 note
 
 Added a latest in-game date correction box. If the experimental binary date is wrong, enter the latest/current in-game date before downloading. The export shifts all captured snapshot dates by the same offset, keeping the spacing between autosaves intact. Added a Clear captured data button for restarting a test without refreshing the page.
+
+
+## v10 note
+
+Binary save date parsing now uses the first/top-level game-date token and avoids overwriting it with later unrelated counters. The manual latest-date override remains as an emergency correction only.

@@ -19,6 +19,7 @@ export function parseBinaryHoi4Snapshot(bytes, fileName = '', log = () => {}) {
   let afterEquals = null;
   const candidates = new Map(); // key token -> Map(state id -> controller tag)
   let dateDays = null;
+  let dateSource = null;
   let tokensRead = 0;
   let hardStops = 0;
 
@@ -81,8 +82,14 @@ export function parseBinaryHoi4Snapshot(bytes, fileName = '', log = () => {}) {
     }
 
     if (kind === 'number' && afterEquals && afterEquals.token === 13954 && value > 0 && value < 20000) {
-      // In observed normal .hoi4 binary saves this token tracks game days from 1936-01-01.
-      dateDays = value;
+      // In normal HOI4bin saves TOKEN_13954 appears right at the top of the file as
+      // the actual game date, stored as days since 1936-01-01. The same token can
+      // appear later inside unrelated nested data, so only accept the first/top-level
+      // hit rather than overwriting it during the full state scan.
+      if (dateDays === null || stack.length <= 1) {
+        dateDays = value;
+        dateSource = stack.length <= 1 ? 'TOKEN_13954_top_level' : 'TOKEN_13954_first_seen';
+      }
       afterEquals = null;
     }
 
@@ -129,6 +136,7 @@ export function parseBinaryHoi4Snapshot(bytes, fileName = '', log = () => {}) {
       chosenCount: best.count,
       inferredStates: Object.keys(states).length,
       dateDays,
+      dateSource,
       dateBase: dateDays ? '1936-01-01_plus_days' : null,
       candidates: ranked.slice(0, 8).map(x => ({ key: `TOKEN_${x.key}`, count: x.count }))
     }
