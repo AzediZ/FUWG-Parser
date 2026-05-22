@@ -82,13 +82,12 @@ export function parseBinaryHoi4Snapshot(bytes, fileName = '', log = () => {}) {
     }
 
     if (kind === 'number' && afterEquals && afterEquals.token === 13954 && value > 0 && value < 20000) {
-      // In normal HOI4bin saves TOKEN_13954 appears right at the top of the file as
+      // In normal HOI4bin saves TOKEN_13954 appears near the top of the file as
       // the actual game date, stored as days since 1936-01-01. The same token can
-      // appear later inside unrelated nested data, so only accept the first/top-level
-      // hit rather than overwriting it during the full state scan.
-      if (dateDays === null || stack.length <= 1) {
+      // appear later inside unrelated nested data, so keep the first valid hit only.
+      if (dateDays === null) {
         dateDays = value;
-        dateSource = stack.length <= 1 ? 'TOKEN_13954_top_level' : 'TOKEN_13954_first_seen';
+        dateSource = stack.length <= 1 ? 'TOKEN_13954_first_top_level' : 'TOKEN_13954_first_seen';
       }
       afterEquals = null;
     }

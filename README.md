@@ -48,3 +48,8 @@ Added a latest in-game date correction box. If the experimental binary date is w
 ## v10 note
 
 Binary save date parsing now uses the first/top-level game-date token and avoids overwriting it with later unrelated counters. The manual latest-date override remains as an emergency correction only.
+
+
+## v11 note
+
+Fixes binary save date extraction by preserving the first top-level HOI4 date token instead of allowing later nested values to overwrite it.
