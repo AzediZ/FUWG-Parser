@@ -91,6 +91,6 @@ Province data remains sparse by design: if a province override exists, render th
 This build embeds a FUWG `history/states` province-to-state mapping generated from the uploaded states folder. Each exported snapshot now includes a full `provinces` object for every known FUWG province. Raw sparse save-level province overrides are preserved separately as `provinceOverrides`. Renderers should use `snapshots[].provinces` for province-level rendering.
 
 
-## v24 note
+## v24 wake lock note
 
-Live watching is now capture-first: the app stores raw parsed snapshots as autosaves appear and only builds the large full-province export when you click Download. This avoids the watcher freezing while creating 10k-province timelines after every autosave.
+When watch mode starts, the app attempts to activate the browser Screen Wake Lock so the screen is less likely to sleep while captures are running. Keep the tab visible for best reliability. If the browser releases the wake lock, the app retries when the tab becomes visible again.

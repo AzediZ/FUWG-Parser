@@ -9,6 +9,7 @@ code { display:block; background:#070b14; border:1px solid #2b3a5d; border-radiu
 .controls { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
 button, .fallback { border:1px solid #3a4d78; background:#1a2b4f; color:#f4f7ff; padding:10px 14px; border-radius:10px; cursor:pointer; font-weight:650; }
 button:disabled { opacity:.45; cursor:not-allowed; }
+.wakeStatus { color:#aab5ca; padding:8px 10px; border:1px solid #24314f; border-radius:10px; background:#081021; }
 .interval { color:#c5cee0; display:flex; gap:8px; align-items:center; }
 input[type="number"], input[type="date"] { width:auto; padding:8px; border-radius:8px; border:1px solid #3a4d78; background:#081021; color:#fff; }
 input[type="file"] { display:none; }
