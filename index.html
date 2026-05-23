@@ -4,43 +4,65 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>HOI4 Game Log Parser</title>
-  <link rel="stylesheet" href="src/styles.css?v=24" />
+  <link rel="stylesheet" href="src/styles.css?v=25" />
 </head>
 <body>
   <main class="wrap">
     <header>
       <h1>HOI4 Game Log Parser</h1>
       <p class="lead">Select a Hearts of Iron IV save folder, watch for autosaves, then export a game-log zip for rendering.</p>
-      <p class="muted"><strong>Version:</strong> v24 full province snapshots + wake lock</p>
+      <p class="muted"><strong>Version:</strong> v25 usability layout + wake lock</p>
     </header>
 
-    <section class="card">
-      <h2>Save folder location</h2>
-      <p>Typical Windows folder:</p>
-      <code>Documents\Paradox Interactive\Hearts of Iron IV\save games</code>
-      <p class="muted">The browser can only read files/folders you manually select. Normal .hoi4 binary saves are attempted locally; no change to HOI4 save settings is required. This version embeds the uploaded FUWG history/states mapping and exports a full effective province-controller snapshot every autosave. Province overrides from the save are used first; otherwise provinces inherit their parent state controller. After selecting the folder, use “Watch new saves only” at the start of a session to ignore existing autosaves and capture new/changed autosaves as the game runs. The live folder picker now ignores non-autosave .hoi4 files for speed. The log should say Version v24 when loaded; if it does not, refresh the page or clear the browser cache. When watch mode starts, the app will try to keep the screen awake while the parser is running.</p>
+    <section class="card setup">
+      <h2>Host setup checklist</h2>
+      <ol class="steps">
+        <li><strong>Before the game:</strong> make sure the host keeps at least <strong>3 autosaves</strong> / <strong>debug_saves = 3 or higher</strong>. One overwriting autosave can cause missed history.</li>
+        <li><strong>Open this page in Chrome or Edge.</strong> GitHub Pages is best. Local file opening can work, but live folder access is more reliable from a hosted page or localhost.</li>
+        <li><strong>Click “Select save folder”.</strong> Choose the HOI4 save folder shown below.</li>
+        <li><strong>At the start of the session, click “Watch new saves only”.</strong> This ignores old saves and records new/changed autosaves as the game runs.</li>
+        <li><strong>Leave the parser tab open and visible if possible.</strong> The app will try to keep the screen awake while watching.</li>
+        <li><strong>At the end, click “Download gamelog export.zip”.</strong> Send that zip to whoever is making the animation render.</li>
+      </ol>
+      <div class="pathBox">
+        <span>Typical save folder</span>
+        <code>Documents\Paradox Interactive\Hearts of Iron IV\save games</code>
+      </div>
+      <p class="muted">The parser only reads files/folders the user manually selects. It runs locally in the browser and exports full FUWG province snapshots using the embedded FUWG state/province mapping.</p>
     </section>
 
-    <section class="card controls">
-      <button id="selectFolderBtn">Select save folder</button>
-      <button id="parseBtn" disabled>Parse selected saves</button>
-      <button id="watchBtn">Start watching</button>
-      <button id="watchNewOnlyBtn">Watch new saves only</button>
-      <button id="downloadBtn" disabled>Download gamelog export.zip</button>
-      <button id="clearBtn">Clear captured data</button>
-      <button id="wakeLockBtn">Keep screen awake: off</button>
-      <span id="wakeLockStatus" class="wakeStatus">Wake lock not active</span>
-      <label class="interval">Check every
-        <input id="pollSeconds" type="number" min="2" max="60" value="5" /> seconds
-      </label>
-      <label class="interval">Latest in-game date
-        <input id="latestDateOverride" type="date" />
-      </label>
-      <input id="fileFallback" type="file" multiple accept=".hoi4,.txt,.save" />
-      <label for="fileFallback" class="fallback">Fallback: select save files manually</label>
-      <input id="folderFallback" type="file" webkitdirectory directory multiple />
-      <label for="folderFallback" class="fallback">Fallback: select folder manually</label>
+    <section class="card actionPanel">
+      <h2>1. Select and watch</h2>
+      <div class="controls primaryControls">
+        <button id="selectFolderBtn" class="mainBtn">Select save folder</button>
+        <button id="watchNewOnlyBtn" class="mainBtn">Watch new saves only</button>
+        <button id="downloadBtn" class="mainBtn" disabled>Download gamelog export.zip</button>
+      </div>
+      <div class="watchStatus">
+        <button id="wakeLockBtn">Keep screen awake: off</button>
+        <span id="wakeLockStatus" class="wakeStatus">Wake lock not active</span>
+        <label class="interval">Check every
+          <input id="pollSeconds" type="number" min="2" max="60" value="5" /> seconds
+        </label>
+      </div>
     </section>
+
+    <details class="card advanced">
+      <summary>Advanced / fallback tools</summary>
+      <div class="controls advancedControls">
+        <button id="parseBtn" disabled>Parse selected saves now</button>
+        <button id="watchBtn">Start/stop watching manually</button>
+        <button id="clearBtn">Clear captured data</button>
+        <label class="interval">Latest in-game date override
+          <input id="latestDateOverride" type="date" />
+        </label>
+        <input id="fileFallback" type="file" multiple accept=".hoi4,.txt,.save" />
+        <label for="fileFallback" class="fallback">Fallback: select autosave files manually</label>
+        <input id="folderFallback" type="file" webkitdirectory directory multiple />
+        <label for="folderFallback" class="fallback">Fallback: select folder manually</label>
+      </div>
+      <p class="muted">Only use these if the normal folder picker is unavailable or you are testing existing autosaves. Manual fallback cannot live-watch new saves.</p>
+    </details>
 
     <section class="grid">
       <div class="card stat"><span id="saveCount">0</span><small>autosaves found</small></div>
@@ -58,6 +80,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-  <script type="module" src="src/app.js?v=24"></script>
+  <script type="module" src="src/app.js?v=25"></script>
 </body>
 </html>

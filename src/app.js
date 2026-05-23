@@ -250,7 +250,7 @@ async function updateExport() {
   const diagnostics = {
     generatedAt: new Date().toISOString(),
     source: 'HOI4 Game Log Parser Web',
-    parserVersion: 'v24-full-province-snapshots-fuwg-states-wakelock',
+    parserVersion: 'v25-usability-layout-full-province-snapshots-fuwg-states-wakelock',
     ...timeline.diagnostics,
     dateOverride,
     parsedFiles: parseDiagnostics.filter(d => d.stage === 'parsed').map(d => d.file),
@@ -357,7 +357,7 @@ els.latestDateOverride.addEventListener('change', () => {
 });
 els.fileFallback.addEventListener('change', async (e) => {
   els.log.textContent = '';
-  log('[INFO] Version v24 full province snapshots + wake lock loaded.');
+  log('[INFO] Version v25 usability layout + wake lock loaded.');
   fallbackFiles = filterAutosaveFiles([...e.target.files].filter(f => /\.hoi4$/i.test(f.name)), 'folder fallback').sort((a,b)=>a.name.localeCompare(b.name));
   dirHandle = null;
   seen.clear();
@@ -373,7 +373,7 @@ els.fileFallback.addEventListener('change', async (e) => {
 
 els.folderFallback.addEventListener('change', async (e) => {
   els.log.textContent = '';
-  log('[INFO] Version v24 full province snapshots + wake lock loaded.');
+  log('[INFO] Version v25 usability layout + wake lock loaded.');
   fallbackFiles = filterAutosaveFiles([...e.target.files].filter(f => /\.hoi4$/i.test(f.name)), 'folder fallback').sort((a,b)=>a.name.localeCompare(b.name));
   dirHandle = null;
   seen.clear();

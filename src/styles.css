@@ -19,3 +19,19 @@ input[type="file"] { display:none; }
 .stat small { color:#aab5ca; }
 pre { min-height:260px; max-height:520px; overflow:auto; margin:0; background:#050914; border-radius:12px; padding:14px; color:#e9f1ff; font-size:13px; line-height:1.45; white-space:pre-wrap; }
 @media (max-width:800px){ .grid{grid-template-columns:repeat(2,1fr);} .wrap{padding:16px;} }
+
+/* v25 usability layout */
+.setup h2, .actionPanel h2 { font-size:22px; }
+.steps { margin: 0; padding-left: 22px; display:grid; gap:10px; }
+.steps li { color:#dbe6f8; line-height:1.45; padding-left:4px; }
+.pathBox { margin-top:16px; }
+.pathBox span { display:block; color:#aab5ca; margin-bottom:6px; font-weight:700; }
+.primaryControls { gap:14px; }
+.mainBtn { font-size:16px; padding:14px 18px; }
+.mainBtn:nth-child(1) { background:#244674; border-color:#5f8dcf; }
+.mainBtn:nth-child(2) { background:#214f3c; border-color:#63ae82; }
+.mainBtn:nth-child(3) { background:#60451f; border-color:#c9994b; }
+.watchStatus { margin-top:14px; display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+details.advanced summary { cursor:pointer; font-weight:800; color:#e8edf7; }
+.advancedControls { margin-top:14px; }
+@media (max-width:800px){ .mainBtn{ width:100%; } .watchStatus > * { width:100%; } }
