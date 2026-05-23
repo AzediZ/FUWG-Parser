@@ -4,14 +4,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>HOI4 Game Log Parser</title>
-  <link rel="stylesheet" href="src/styles.css?v=25" />
+  <link rel="stylesheet" href="src/styles.css?v=26" />
 </head>
 <body>
   <main class="wrap">
     <header>
       <h1>HOI4 Game Log Parser</h1>
       <p class="lead">Select a Hearts of Iron IV save folder, watch for autosaves, then export a game-log zip for rendering.</p>
-      <p class="muted"><strong>Version:</strong> v25 usability layout + wake lock</p>
+      <p class="muted"><strong>Version:</strong> v26 usability layout + stop/clear controls</p>
     </header>
 
     <section class="card setup">
@@ -19,10 +19,11 @@
       <ol class="steps">
         <li><strong>Before the game:</strong> make sure the host keeps at least <strong>3 autosaves</strong> / <strong>debug_saves = 3 or higher</strong>. One overwriting autosave can cause missed history.</li>
         <li><strong>Open this page in Chrome or Edge.</strong> GitHub Pages is best. Local file opening can work, but live folder access is more reliable from a hosted page or localhost.</li>
+        <li><strong>Delete all current autosaves.</strong> Normal/manual saves are fine to keep. This helps “Watch new saves only” start from a clean point.</li>
         <li><strong>Click “Select save folder”.</strong> Choose the HOI4 save folder shown below.</li>
         <li><strong>At the start of the session, click “Watch new saves only”.</strong> This ignores old saves and records new/changed autosaves as the game runs.</li>
-        <li><strong>Leave the parser tab open and visible if possible.</strong> The app will try to keep the screen awake while watching.</li>
-        <li><strong>At the end, click “Download gamelog export.zip”.</strong> Send that zip to whoever is making the animation render.</li>
+        <li><strong>At the end of the session, click “Stop watching”.</strong> This stops the live checker before export.</li>
+        <li><strong>Click “Download gamelog export.zip”.</strong> Send that zip to whoever is making the animation render.</li>
       </ol>
       <div class="pathBox">
         <span>Typical save folder</span>
@@ -36,6 +37,8 @@
       <div class="controls primaryControls">
         <button id="selectFolderBtn" class="mainBtn">Select save folder</button>
         <button id="watchNewOnlyBtn" class="mainBtn">Watch new saves only</button>
+        <button id="watchBtn" class="mainBtn" disabled>Stop watching</button>
+        <button id="clearBtn" class="mainBtn">Clear captured data</button>
         <button id="downloadBtn" class="mainBtn" disabled>Download gamelog export.zip</button>
       </div>
       <div class="watchStatus">
@@ -51,8 +54,6 @@
       <summary>Advanced / fallback tools</summary>
       <div class="controls advancedControls">
         <button id="parseBtn" disabled>Parse selected saves now</button>
-        <button id="watchBtn">Start/stop watching manually</button>
-        <button id="clearBtn">Clear captured data</button>
         <label class="interval">Latest in-game date override
           <input id="latestDateOverride" type="date" />
         </label>
@@ -80,6 +81,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-  <script type="module" src="src/app.js?v=25"></script>
+  <script type="module" src="src/app.js?v=26"></script>
 </body>
 </html>

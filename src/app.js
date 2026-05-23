@@ -177,8 +177,7 @@ async function selectFolder() {
   parseDiagnostics = [];
   latestZipBlob = null;
   els.parseBtn.disabled = false;
-  // Keep watch buttons clickable so they never appear broken/greyed out; handlers validate source support.
-  els.watchBtn.disabled = false;
+  els.watchBtn.disabled = true;
   els.watchNewOnlyBtn.disabled = false;
   els.downloadBtn.disabled = true;
   log(`Selected live folder: ${dirHandle.name}`);
@@ -250,7 +249,7 @@ async function updateExport() {
   const diagnostics = {
     generatedAt: new Date().toISOString(),
     source: 'HOI4 Game Log Parser Web',
-    parserVersion: 'v25-usability-layout-full-province-snapshots-fuwg-states-wakelock',
+    parserVersion: 'v26-usability-layout-stop-clear-controls-full-province-snapshots-fuwg-states-wakelock',
     ...timeline.diagnostics,
     dateOverride,
     parsedFiles: parseDiagnostics.filter(d => d.stage === 'parsed').map(d => d.file),
@@ -294,25 +293,37 @@ async function markExistingAsSeen() {
   log(`[INFO] Ignoring ${files.length} existing save file(s). New/changed saves will be parsed from now on.`);
 }
 
-function toggleWatch() {
+function startWatch() {
   if (!dirHandle) {
     log('[WARN] Live watching needs the Chrome/Edge folder picker. Click “Select save folder” and allow folder access, or host this repo on GitHub Pages/localhost. Manual fallback files can be parsed, but cannot be live-watched.');
     return;
   }
   if (watchTimer) {
-    clearInterval(watchTimer);
-    watchTimer = null;
-    els.watchBtn.textContent = 'Start watching';
-    log('Watch mode stopped.');
-    releaseWakeLock(false).catch(() => {});
+    log('[INFO] Watch mode is already running.');
     return;
   }
   const seconds = Math.max(2, Number(els.pollSeconds.value) || 5);
-  els.watchBtn.textContent = 'Stop watching';
+  els.watchBtn.disabled = false;
+  els.watchNewOnlyBtn.disabled = true;
   log(`Watch mode started. Checking every ${seconds} seconds.`);
   requestWakeLock('watch mode').catch(e => log('[WARN] Wake lock failed: ' + e.message));
   tickWatch();
   watchTimer = setInterval(tickWatch, seconds * 1000);
+}
+
+function stopWatch() {
+  if (!watchTimer) {
+    log('[INFO] Watch mode is not currently running.');
+    els.watchBtn.disabled = true;
+    if (dirHandle) els.watchNewOnlyBtn.disabled = false;
+    return;
+  }
+  clearInterval(watchTimer);
+  watchTimer = null;
+  els.watchBtn.disabled = true;
+  if (dirHandle) els.watchNewOnlyBtn.disabled = false;
+  log('Watch mode stopped.');
+  releaseWakeLock(false).catch(() => {});
 }
 
 function downloadZip() {
@@ -328,7 +339,7 @@ function downloadZip() {
 
 els.selectFolderBtn.addEventListener('click', () => selectFolder().catch(e => log('[ERROR] ' + e.message)));
 els.parseBtn.addEventListener('click', () => parseNow().catch(e => log('[ERROR] ' + e.message)));
-els.watchBtn.addEventListener('click', () => toggleWatch());
+els.watchBtn.addEventListener('click', () => stopWatch());
 els.watchNewOnlyBtn.addEventListener('click', async () => {
   try {
     if (!dirHandle) {
@@ -336,7 +347,7 @@ els.watchNewOnlyBtn.addEventListener('click', async () => {
       return;
     }
     await markExistingAsSeen();
-    if (!watchTimer) toggleWatch();
+    if (!watchTimer) startWatch();
   } catch (e) {
     log('[ERROR] ' + e.message);
   }
@@ -357,7 +368,7 @@ els.latestDateOverride.addEventListener('change', () => {
 });
 els.fileFallback.addEventListener('change', async (e) => {
   els.log.textContent = '';
-  log('[INFO] Version v25 usability layout + wake lock loaded.');
+  log('[INFO] Version v26 usability layout + stop/clear controls loaded.');
   fallbackFiles = filterAutosaveFiles([...e.target.files].filter(f => /\.hoi4$/i.test(f.name)), 'folder fallback').sort((a,b)=>a.name.localeCompare(b.name));
   dirHandle = null;
   seen.clear();
@@ -365,7 +376,7 @@ els.fileFallback.addEventListener('change', async (e) => {
   parseDiagnostics = [];
   latestZipBlob = null;
   els.parseBtn.disabled = fallbackFiles.length === 0;
-  els.watchBtn.disabled = false;
+  els.watchBtn.disabled = true;
   els.watchNewOnlyBtn.disabled = false;
   els.downloadBtn.disabled = true;
   log(`Selected ${fallbackFiles.length} save file(s) manually.`);
@@ -373,7 +384,7 @@ els.fileFallback.addEventListener('change', async (e) => {
 
 els.folderFallback.addEventListener('change', async (e) => {
   els.log.textContent = '';
-  log('[INFO] Version v25 usability layout + wake lock loaded.');
+  log('[INFO] Version v26 usability layout + stop/clear controls loaded.');
   fallbackFiles = filterAutosaveFiles([...e.target.files].filter(f => /\.hoi4$/i.test(f.name)), 'folder fallback').sort((a,b)=>a.name.localeCompare(b.name));
   dirHandle = null;
   seen.clear();
@@ -381,7 +392,7 @@ els.folderFallback.addEventListener('change', async (e) => {
   parseDiagnostics = [];
   latestZipBlob = null;
   els.parseBtn.disabled = fallbackFiles.length === 0;
-  els.watchBtn.disabled = false;
+  els.watchBtn.disabled = true;
   els.watchNewOnlyBtn.disabled = false;
   els.downloadBtn.disabled = true;
   log(`Selected ${fallbackFiles.length} save file(s) from folder fallback.`);
