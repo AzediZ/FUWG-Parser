@@ -1,4 +1,5 @@
 import { meltBinaryHoi4, inferStatesFromMeltedBinary, parseBinaryHoi4Snapshot } from './binary.js';
+import { FUWG_PROVINCE_TO_STATE, FUWG_STATE_TO_PROVINCES, FUWG_PROVINCE_MAP_META } from './fuwg_province_state_map.js';
 
 const decoder = new TextDecoder('utf-8', { fatal: false });
 
@@ -188,17 +189,21 @@ export function buildTimeline(rawSnapshots) {
     byKey.set(key, s);
   }
   const ordered = [...byKey.values()].sort((a, b) => (a.date || a.fileName).localeCompare(b.date || b.fileName));
-  const knownStates = new Set();
-  const knownProvinces = new Set();
+
+  // Use the uploaded FUWG history/states data as the authoritative province list.
+  // HOI4 saves usually store province control as sparse overrides, so a missing province
+  // override should inherit the controller of its parent state for that same snapshot.
+  const knownStates = new Set(Object.keys(FUWG_STATE_TO_PROVINCES));
+  const knownProvinces = new Set(Object.keys(FUWG_PROVINCE_TO_STATE));
   for (const s of ordered) {
     Object.keys(s.states || {}).forEach(id => knownStates.add(id));
     Object.keys(s.provinces || {}).forEach(id => knownProvinces.add(id));
   }
 
   const lastStates = {};
-  const lastProvinces = {};
   let carriedForwardControllers = 0;
-  let carriedForwardProvinceControllers = 0;
+  let effectiveProvinceFallbacks = 0;
+  let rawProvinceOverrideTotal = 0;
   const stateIds = [...knownStates].sort((a, b) => Number(a) - Number(b));
   const provinceIds = [...knownProvinces].sort((a, b) => Number(a) - Number(b));
 
@@ -217,20 +222,32 @@ export function buildTimeline(rawSnapshots) {
       }
     }
 
-    const fullProvinces = {};
-    for (const id of provinceIds) {
-      const current = (s.provinces || {})[id];
-      if (current) {
-        fullProvinces[id] = current;
-        lastProvinces[id] = current;
-      } else if (lastProvinces[id]) {
-        fullProvinces[id] = lastProvinces[id];
-        carriedForwardProvinceControllers++;
-      } else {
-        fullProvinces[id] = 'NUL';
-      }
+    const provinceOverrides = {};
+    for (const [id, controller] of Object.entries(s.provinces || {})) {
+      if (controller && controller !== 'NUL') provinceOverrides[id] = controller;
     }
-    return { date: s.date, file: s.fileName, states: fullStates, provinces: fullProvinces };
+    rawProvinceOverrideTotal += Object.keys(provinceOverrides).length;
+
+    const effectiveProvinces = {};
+    for (const provinceId of provinceIds) {
+      const override = provinceOverrides[provinceId];
+      if (override) {
+        effectiveProvinces[provinceId] = override;
+        continue;
+      }
+      const stateId = FUWG_PROVINCE_TO_STATE[provinceId];
+      const fallback = stateId ? fullStates[stateId] : null;
+      effectiveProvinces[provinceId] = fallback || 'NUL';
+      effectiveProvinceFallbacks++;
+    }
+
+    return {
+      date: s.date,
+      file: s.fileName,
+      states: fullStates,
+      provinces: effectiveProvinces,
+      provinceOverrides
+    };
   });
 
   const stateControllerTimeline = {};
@@ -240,19 +257,23 @@ export function buildTimeline(rawSnapshots) {
 
   const provinceControllerTimeline = {};
   for (const id of provinceIds) {
-    provinceControllerTimeline[id] = snapshots.map(s => ({ date: s.date, controller: s.provinces[id] }));
+    provinceControllerTimeline[id] = snapshots.map(s => ({ date: s.date, controller: s.provinces[id] || 'NUL' }));
   }
 
   return {
     snapshots,
     stateControllerTimeline,
     provinceControllerTimeline,
+    provinceStateMap: FUWG_PROVINCE_TO_STATE,
     diagnostics: {
       snapshots: snapshots.length,
       states: knownStates.size,
       provinces: knownProvinces.size,
+      rawProvinceOverrideTotal,
+      effectiveProvinceFallbacks,
       carriedForwardControllers,
-      carriedForwardProvinceControllers
+      carriedForwardProvinceControllers: 0,
+      provinceMap: FUWG_PROVINCE_MAP_META
     }
   };
 }

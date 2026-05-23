@@ -157,8 +157,8 @@ async function parseFiles(files, onlyChanged = false) {
     }
     const parsedKey = snap.date ? `${snap.date}:${file.name}` : sig;
     parsed.set(parsedKey, snap);
-    parseDiagnostics.push({ file: file.name, key: parsedKey, stage: 'parsed', source: read.source, date: snap.date || null, states: Object.keys(snap.states || {}).length, provinces: Object.keys(snap.provinces || {}).length, binaryFallback: !!snap.binaryFallback, diagnostics: snap.diagnostics, binaryDiagnostics: read.binaryDiagnostics });
-    log(`[OK] Parsed ${file.name}${snap.date ? ' -> ' + snap.date : ''} (${Object.keys(snap.states || {}).length} states, ${Object.keys(snap.provinces || {}).length} province overrides, source=${read.source}${snap.binaryFallback ? ', inferred binary blocks' : ''})`);
+    parseDiagnostics.push({ file: file.name, key: parsedKey, stage: 'parsed', source: read.source, date: snap.date || null, states: Object.keys(snap.states || {}).length, provinces: Object.keys(snap.provinces || {}).length, provinceOverrides: Object.keys(snap.provinceOverrides || {}).length, binaryFallback: !!snap.binaryFallback, diagnostics: snap.diagnostics, binaryDiagnostics: read.binaryDiagnostics });
+    log(`[OK] Parsed ${file.name}${snap.date ? ' -> ' + snap.date : ''} (${Object.keys(snap.states || {}).length} states, ${Object.keys(snap.provinces || {}).length} raw province override entries, source=${read.source}${snap.binaryFallback ? ', inferred binary blocks' : ''})`);
   }
 
   if (onlyChanged && changed === 0) {
@@ -179,7 +179,7 @@ async function updateExport() {
   const diagnostics = {
     generatedAt: new Date().toISOString(),
     source: 'HOI4 Game Log Parser Web',
-    parserVersion: 'v21-province-overrides',
+    parserVersion: 'v23-full-province-snapshots-fuwg-states',
     ...timeline.diagnostics,
     dateOverride,
     parsedFiles: parseDiagnostics.filter(d => d.stage === 'parsed').map(d => d.file),
@@ -190,11 +190,12 @@ async function updateExport() {
     snapshots: timeline.snapshots,
     stateControllerTimeline: timeline.stateControllerTimeline,
     provinceControllerTimeline: timeline.provinceControllerTimeline,
+    provinceStateMap: timeline.provinceStateMap,
     diagnostics
   });
   els.downloadBtn.disabled = timeline.snapshots.length === 0 && parseDiagnostics.length === 0;
   setStats(timeline.diagnostics);
-  log(`[OK] Updated export: ${timeline.diagnostics.snapshots} snapshots, ${timeline.diagnostics.states} states, ${timeline.diagnostics.provinces} province overrides, ${timeline.diagnostics.carriedForwardControllers} carried-forward state controllers.`);
+  log(`[OK] Updated export: ${timeline.diagnostics.snapshots} snapshots, ${timeline.diagnostics.states} states, ${timeline.diagnostics.provinces} effective provinces, ${timeline.diagnostics.rawProvinceOverrideTotal || 0} raw province override entries, ${timeline.diagnostics.carriedForwardControllers} carried-forward state controllers.`);
   if (timeline.snapshots.length) {
     const dates = timeline.snapshots.map(s => s.date || 'NO_DATE');
     const preview = dates.length <= 12 ? dates.join(', ') : `${dates.slice(0, 6).join(', ')} ... ${dates.slice(-6).join(', ')}`;
@@ -274,7 +275,7 @@ els.latestDateOverride.addEventListener('change', () => {
 });
 els.fileFallback.addEventListener('change', async (e) => {
   els.log.textContent = '';
-  log('[INFO] Version v21 province-overrides accepted loaded.');
+  log('[INFO] Version v23 full province snapshots loaded.');
   fallbackFiles = filterAutosaveFiles([...e.target.files].filter(f => /\.hoi4$/i.test(f.name)), 'folder fallback').sort((a,b)=>a.name.localeCompare(b.name));
   dirHandle = null;
   seen.clear();
@@ -290,7 +291,7 @@ els.fileFallback.addEventListener('change', async (e) => {
 
 els.folderFallback.addEventListener('change', async (e) => {
   els.log.textContent = '';
-  log('[INFO] Version v21 province-overrides accepted loaded.');
+  log('[INFO] Version v23 full province snapshots loaded.');
   fallbackFiles = filterAutosaveFiles([...e.target.files].filter(f => /\.hoi4$/i.test(f.name)), 'folder fallback').sort((a,b)=>a.name.localeCompare(b.name));
   dirHandle = null;
   seen.clear();
