@@ -25,7 +25,10 @@ let fallbackFiles = [];
 let seen = new Map();
 let parsed = new Map();
 let latestZipBlob = null;
+let exportDirty = true;
 let watchTimer = null;
+let parsingActive = false;
+let pendingTick = false;
 let parseDiagnostics = [];
 
 function log(msg) {
@@ -86,6 +89,7 @@ function clearCapturedData() {
   parsed.clear();
   parseDiagnostics = [];
   latestZipBlob = null;
+  exportDirty = true;
   els.downloadBtn.disabled = true;
   setStats({ snapshots: 0, states: 0, provinces: 0, carriedForwardControllers: 0 });
   log('[INFO] Cleared captured snapshots/diagnostics. Existing seen-file markers were kept, so watch mode will still ignore saves that were already present.');
@@ -105,6 +109,7 @@ async function selectFolder() {
   parsed.clear();
   parseDiagnostics = [];
   latestZipBlob = null;
+  exportDirty = true;
   els.parseBtn.disabled = false;
   // Keep watch buttons clickable so they never appear broken/greyed out; handlers validate source support.
   els.watchBtn.disabled = false;
@@ -157,6 +162,8 @@ async function parseFiles(files, onlyChanged = false) {
     }
     const parsedKey = snap.date ? `${snap.date}:${file.name}` : sig;
     parsed.set(parsedKey, snap);
+    latestZipBlob = null;
+    exportDirty = true;
     parseDiagnostics.push({ file: file.name, key: parsedKey, stage: 'parsed', source: read.source, date: snap.date || null, states: Object.keys(snap.states || {}).length, provinces: Object.keys(snap.provinces || {}).length, provinceOverrides: Object.keys(snap.provinceOverrides || {}).length, binaryFallback: !!snap.binaryFallback, diagnostics: snap.diagnostics, binaryDiagnostics: read.binaryDiagnostics });
     log(`[OK] Parsed ${file.name}${snap.date ? ' -> ' + snap.date : ''} (${Object.keys(snap.states || {}).length} states, ${Object.keys(snap.provinces || {}).length} raw province override entries, source=${read.source}${snap.binaryFallback ? ', inferred binary blocks' : ''})`);
   }
@@ -166,9 +173,36 @@ async function parseFiles(files, onlyChanged = false) {
     return;
   }
 
-  await updateExport();
+  updateCaptureStats();
   if (skipped && parsed.size === 0) {
     log('[NOTE] No state snapshots were recovered yet. You can still download gamelog export.zip for diagnostics.');
+  }
+}
+
+
+function currentRawSnapshotSummary() {
+  const values = [...parsed.values()];
+  const dates = values.map(s => s.date).filter(Boolean).sort();
+  const first = dates[0] || null;
+  const last = dates[dates.length - 1] || null;
+  let maxStates = 0;
+  let maxRawProvinces = 0;
+  for (const s of values) {
+    maxStates = Math.max(maxStates, Object.keys(s.states || {}).length);
+    maxRawProvinces = Math.max(maxRawProvinces, Object.keys(s.provinces || {}).length);
+  }
+  return { count: values.length, first, last, maxStates, maxRawProvinces };
+}
+
+function updateCaptureStats() {
+  const summary = currentRawSnapshotSummary();
+  els.snapshotCount.textContent = summary.count;
+  els.stateCount.textContent = summary.maxStates || 0;
+  if (els.provinceCount) els.provinceCount.textContent = summary.maxRawProvinces ? `${summary.maxRawProvinces} raw` : '0 raw';
+  els.carryCount.textContent = 'pending export';
+  els.downloadBtn.disabled = parsed.size === 0 && parseDiagnostics.length === 0;
+  if (summary.count) {
+    log(`[INFO] Captured ${summary.count} raw snapshot(s). Date range: ${summary.first || 'NO_DATE'} -> ${summary.last || 'NO_DATE'}. Full 10k-province export is built only when you download, to avoid missing autosaves.`);
   }
 }
 
@@ -179,12 +213,13 @@ async function updateExport() {
   const diagnostics = {
     generatedAt: new Date().toISOString(),
     source: 'HOI4 Game Log Parser Web',
-    parserVersion: 'v23-full-province-snapshots-fuwg-states',
+    parserVersion: 'v24-capture-first-no-autozip',
     ...timeline.diagnostics,
     dateOverride,
     parsedFiles: parseDiagnostics.filter(d => d.stage === 'parsed').map(d => d.file),
     parseDiagnostics
   };
+  log('[INFO] Building full province export now. The watcher is capture-first, so this heavy step is delayed until download.');
   latestZipBlob = await makeExportZip({
     game: { title: 'Game Log Export', generatedAt: diagnostics.generatedAt },
     snapshots: timeline.snapshots,
@@ -193,6 +228,7 @@ async function updateExport() {
     provinceStateMap: timeline.provinceStateMap,
     diagnostics
   });
+  exportDirty = false;
   els.downloadBtn.disabled = timeline.snapshots.length === 0 && parseDiagnostics.length === 0;
   setStats(timeline.diagnostics);
   log(`[OK] Updated export: ${timeline.diagnostics.snapshots} snapshots, ${timeline.diagnostics.states} states, ${timeline.diagnostics.provinces} effective provinces, ${timeline.diagnostics.rawProvinceOverrideTotal || 0} raw province override entries, ${timeline.diagnostics.carriedForwardControllers} carried-forward state controllers.`);
@@ -209,8 +245,21 @@ async function parseNow() {
 }
 
 async function tickWatch() {
-  const files = await collectFilesFromFolder();
-  await parseFiles(files, true);
+  if (parsingActive) {
+    pendingTick = true;
+    log('[INFO] Previous check still processing; queued one follow-up check instead of overlapping.');
+    return;
+  }
+  parsingActive = true;
+  try {
+    do {
+      pendingTick = false;
+      const files = await collectFilesFromFolder();
+      await parseFiles(files, true);
+    } while (pendingTick);
+  } finally {
+    parsingActive = false;
+  }
 }
 
 async function markExistingAsSeen() {
@@ -235,14 +284,17 @@ function toggleWatch() {
     log('Watch mode stopped.');
     return;
   }
-  const seconds = Math.max(2, Number(els.pollSeconds.value) || 5);
+  const seconds = Math.max(1, Number(els.pollSeconds.value) || 2);
   els.watchBtn.textContent = 'Stop watching';
   log(`Watch mode started. Checking every ${seconds} seconds.`);
   tickWatch();
   watchTimer = setInterval(tickWatch, seconds * 1000);
 }
 
-function downloadZip() {
+async function downloadZip() {
+  if (exportDirty || !latestZipBlob) {
+    try { await updateExport(); } catch (e) { log('[ERROR] Failed to build export: ' + e.message); return; }
+  }
   if (!latestZipBlob) return;
   const a = document.createElement('a');
   a.href = URL.createObjectURL(latestZipBlob);
@@ -268,14 +320,14 @@ els.watchNewOnlyBtn.addEventListener('click', async () => {
     log('[ERROR] ' + e.message);
   }
 });
-els.downloadBtn.addEventListener('click', downloadZip);
+els.downloadBtn.addEventListener('click', () => downloadZip());
 els.clearBtn.addEventListener('click', clearCapturedData);
 els.latestDateOverride.addEventListener('change', () => {
-  if (parsed.size) updateExport().catch(e => log('[ERROR] ' + e.message));
+  if (parsed.size) { latestZipBlob = null; exportDirty = true; log('[INFO] Date override changed. Export will be rebuilt on next download.'); }
 });
 els.fileFallback.addEventListener('change', async (e) => {
   els.log.textContent = '';
-  log('[INFO] Version v23 full province snapshots loaded.');
+  log('[INFO] Version v24 capture-first province snapshots loaded.');
   fallbackFiles = filterAutosaveFiles([...e.target.files].filter(f => /\.hoi4$/i.test(f.name)), 'folder fallback').sort((a,b)=>a.name.localeCompare(b.name));
   dirHandle = null;
   seen.clear();
@@ -291,7 +343,7 @@ els.fileFallback.addEventListener('change', async (e) => {
 
 els.folderFallback.addEventListener('change', async (e) => {
   els.log.textContent = '';
-  log('[INFO] Version v23 full province snapshots loaded.');
+  log('[INFO] Version v24 capture-first province snapshots loaded.');
   fallbackFiles = filterAutosaveFiles([...e.target.files].filter(f => /\.hoi4$/i.test(f.name)), 'folder fallback').sort((a,b)=>a.name.localeCompare(b.name));
   dirHandle = null;
   seen.clear();

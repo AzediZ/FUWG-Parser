@@ -11,7 +11,7 @@
     <header>
       <h1>HOI4 Game Log Parser</h1>
       <p class="lead">Select a Hearts of Iron IV save folder, watch for autosaves, then export a game-log zip for rendering.</p>
-      <p class="muted"><strong>Version:</strong> v23 full province snapshots</p>
+      <p class="muted"><strong>Version:</strong> v24 capture-first province snapshots</p>
     </header>
 
     <section class="card">
@@ -29,7 +29,7 @@
       <button id="downloadBtn" disabled>Download gamelog export.zip</button>
       <button id="clearBtn">Clear captured data</button>
       <label class="interval">Check every
-        <input id="pollSeconds" type="number" min="2" max="60" value="5" /> seconds
+        <input id="pollSeconds" type="number" min="1" max="60" value="2" /> seconds
       </label>
       <label class="interval">Latest in-game date
         <input id="latestDateOverride" type="date" />
