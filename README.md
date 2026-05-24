@@ -7,17 +7,18 @@ Static, GitHub Pages-ready HOI4/FUWG game-log parser/exporter.
 1. Before the game, make sure the host keeps at least **3 autosaves** / **debug_saves = 3 or higher**. One overwriting autosave can miss large chunks of history.
 2. Open the parser in **Chrome or Edge**. GitHub Pages is preferred.
 3. Delete all current autosaves. Normal/manual saves are fine to keep.
-4. Click **Select save folder**.
-5. Select:
+4. Host the game as normal.
+5. Click **Select save folder**.
+6. Select:
 
 ```text
 Documents\Paradox Interactive\Hearts of Iron IV\save games
 ```
 
-6. At the start of the session, click **Watch new saves only**.
-7. Keep the parser tab open/visible if possible. The app tries to keep the screen awake while watching.
-8. At the end of the session, click **Stop watching**.
-9. Click **Download gamelog export.zip** and send that file for rendering.
+7. When the game is ready to un-pause and start, click **Watch new saves only**.
+8. Keep the parser tab open/visible if possible. The app tries to keep the screen awake while watching.
+9. At the end of the session, click **Stop watching**.
+10. Click **Download gamelog export.zip** and send that file for rendering (currently Azedi).
 
 ## What it exports
 
@@ -31,4 +32,4 @@ Upload the repo contents to GitHub and enable GitHub Pages from the repo root. N
 
 The parser only reads files/folders the user manually selects. It ignores normal/manual saves in live folder mode and watches `autosave.hoi4`, `autosave_1.hoi4`, `autosave_2.hoi4`, etc.
 
-Version: v26 usability layout + stop/clear controls.
+Version: v27 host checklist update.

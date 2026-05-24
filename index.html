@@ -4,14 +4,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>HOI4 Game Log Parser</title>
-  <link rel="stylesheet" href="src/styles.css?v=26" />
+  <link rel="stylesheet" href="src/styles.css?v=27" />
 </head>
 <body>
   <main class="wrap">
     <header>
       <h1>HOI4 Game Log Parser</h1>
       <p class="lead">Select a Hearts of Iron IV save folder, watch for autosaves, then export a game-log zip for rendering.</p>
-      <p class="muted"><strong>Version:</strong> v26 usability layout + stop/clear controls</p>
+      <p class="muted"><strong>Version:</strong> v27 host checklist update</p>
     </header>
 
     <section class="card setup">
@@ -20,10 +20,11 @@
         <li><strong>Before the game:</strong> make sure the host keeps at least <strong>3 autosaves</strong> / <strong>debug_saves = 3 or higher</strong>. One overwriting autosave can cause missed history.</li>
         <li><strong>Open this page in Chrome or Edge.</strong> GitHub Pages is best. Local file opening can work, but live folder access is more reliable from a hosted page or localhost.</li>
         <li><strong>Delete all current autosaves.</strong> Normal/manual saves are fine to keep. This helps “Watch new saves only” start from a clean point.</li>
+        <li><strong>Host the game as normal.</strong></li>
         <li><strong>Click “Select save folder”.</strong> Choose the HOI4 save folder shown below.</li>
-        <li><strong>At the start of the session, click “Watch new saves only”.</strong> This ignores old saves and records new/changed autosaves as the game runs.</li>
+        <li><strong>When the game is ready to un-pause and start, click “Watch new saves only”.</strong> This ignores old saves and records new/changed autosaves as the game runs.</li>
         <li><strong>At the end of the session, click “Stop watching”.</strong> This stops the live checker before export.</li>
-        <li><strong>Click “Download gamelog export.zip”.</strong> Send that zip to whoever is making the animation render.</li>
+        <li><strong>Click “Download gamelog export.zip”.</strong> Send that zip to whoever is making the animation render (currently Azedi).</li>
       </ol>
       <div class="pathBox">
         <span>Typical save folder</span>
