@@ -32,11 +32,16 @@ Upload the repo contents to GitHub and enable GitHub Pages from the repo root. N
 
 The parser only reads files/folders the user manually selects. It ignores normal/manual saves in live folder mode and watches `autosave.hoi4`, `autosave_1.hoi4`, `autosave_2.hoi4`, etc.
 
-Version: v28 crash recovery + wake lock.
+Version: v29 crash recovery + wake lock.
 
 
 ## Crash recovery
 
-Version v28 saves a recovery checkpoint in the browser using IndexedDB after snapshots are captured. If the tab crashes, reopen the parser page before starting a new session. If a checkpoint is found, use **Recover previous capture**, then **Download gamelog export.zip**.
+Version v29 saves a recovery checkpoint in the browser using IndexedDB after snapshots are captured. If the tab crashes, reopen the parser page before starting a new session. If a checkpoint is found, use **Recover previous capture**, then **Download gamelog export.zip**.
 
 Use **Discard saved recovery** only after you have exported the recovered game or when you want to start clean.
+
+
+## v29 recovery note
+
+The crash recovery box is now always visible. Use **Recover previous capture** after reopening the page if the browser or tab crashes.

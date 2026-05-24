@@ -85,7 +85,7 @@ function recoveryDelete() {
 }
 function buildRecoveryPayload(reason = 'auto') {
   return {
-    appVersion: 'v28-crash-recovery',
+    appVersion: 'v29-always-visible-recovery',
     savedAt: new Date().toISOString(),
     reason,
     parsedEntries: [...parsed.entries()],
@@ -110,15 +110,16 @@ function scheduleRecoverySave(reason = 'auto') {
 }
 function updateRecoveryPanel(payload = null) {
   if (!els.recoveryPanel || !els.recoveryStatus) return;
+  // Keep the recovery panel visible at all times so the user can manually try recovery
+  // even if automatic detection fails after a crash/browser restore.
+  els.recoveryPanel.hidden = false;
   if (!payload || (!payload.parsedEntries?.length && !payload.parseDiagnostics?.length)) {
-    els.recoveryPanel.hidden = true;
-    els.recoveryStatus.textContent = 'No recovery checkpoint found.';
+    els.recoveryStatus.textContent = 'No saved recovery found. You can still click Recover previous capture to check manually.';
     return;
   }
   const savedAt = payload.savedAt ? new Date(payload.savedAt).toLocaleString() : 'unknown time';
   const snapshotCount = payload.parsedEntries?.length || 0;
-  els.recoveryPanel.hidden = false;
-  els.recoveryStatus.textContent = `Saved checkpoint found: ${snapshotCount} captured snapshot(s), saved ${savedAt}.`;
+  els.recoveryStatus.textContent = `Saved recovery found: ${snapshotCount} captured snapshot(s), saved ${savedAt}.`;
 }
 async function checkRecoveryOnLoad() {
   try {
@@ -374,7 +375,7 @@ async function updateExport() {
   const diagnostics = {
     generatedAt: new Date().toISOString(),
     source: 'HOI4 Game Log Parser Web',
-    parserVersion: 'v28-crash-recovery-full-province-snapshots-fuwg-states-wakelock',
+    parserVersion: 'v29-always-visible-recovery-full-province-snapshots-fuwg-states-wakelock',
     ...timeline.diagnostics,
     dateOverride,
     parsedFiles: parseDiagnostics.filter(d => d.stage === 'parsed').map(d => d.file),
@@ -497,7 +498,7 @@ els.latestDateOverride.addEventListener('change', () => {
 });
 els.fileFallback.addEventListener('change', async (e) => {
   els.log.textContent = '';
-  log('[INFO] Version v28 crash recovery + host checklist loaded.');
+  log('[INFO] Version v29 always-visible recovery + host checklist loaded.');
   fallbackFiles = filterAutosaveFiles([...e.target.files].filter(f => /\.hoi4$/i.test(f.name)), 'folder fallback').sort((a,b)=>a.name.localeCompare(b.name));
   dirHandle = null;
   seen.clear();
@@ -513,7 +514,7 @@ els.fileFallback.addEventListener('change', async (e) => {
 
 els.folderFallback.addEventListener('change', async (e) => {
   els.log.textContent = '';
-  log('[INFO] Version v28 crash recovery + host checklist loaded.');
+  log('[INFO] Version v29 always-visible recovery + host checklist loaded.');
   fallbackFiles = filterAutosaveFiles([...e.target.files].filter(f => /\.hoi4$/i.test(f.name)), 'folder fallback').sort((a,b)=>a.name.localeCompare(b.name));
   dirHandle = null;
   seen.clear();
