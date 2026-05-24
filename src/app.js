@@ -19,7 +19,11 @@ const els = {
   snapshotCount: document.getElementById('snapshotCount'),
   stateCount: document.getElementById('stateCount'),
   provinceCount: document.getElementById('provinceCount'),
-  carryCount: document.getElementById('carryCount')
+  carryCount: document.getElementById('carryCount'),
+  recoveryPanel: document.getElementById('recoveryPanel'),
+  recoveryStatus: document.getElementById('recoveryStatus'),
+  recoverBtn: document.getElementById('recoverBtn'),
+  discardRecoveryBtn: document.getElementById('discardRecoveryBtn')
 };
 
 let dirHandle = null;
@@ -31,6 +35,122 @@ let watchTimer = null;
 let wakeLock = null;
 let wakeLockWanted = false;
 let parseDiagnostics = [];
+
+
+const RECOVERY_DB_NAME = 'hoi4-gamelog-parser-recovery-v1';
+const RECOVERY_STORE = 'recovery';
+const RECOVERY_KEY = 'latest-session';
+let recoveryWriteTimer = null;
+
+function openRecoveryDb() {
+  return new Promise((resolve, reject) => {
+    if (!('indexedDB' in window)) {
+      reject(new Error('IndexedDB is not available in this browser/context.'));
+      return;
+    }
+    const request = indexedDB.open(RECOVERY_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(RECOVERY_STORE)) db.createObjectStore(RECOVERY_STORE);
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error('Could not open recovery database.'));
+  });
+}
+function recoveryPut(value) {
+  return openRecoveryDb().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction(RECOVERY_STORE, 'readwrite');
+    tx.objectStore(RECOVERY_STORE).put(value, RECOVERY_KEY);
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error || new Error('Could not save recovery data.')); };
+  }));
+}
+function recoveryGet() {
+  return openRecoveryDb().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction(RECOVERY_STORE, 'readonly');
+    const req = tx.objectStore(RECOVERY_STORE).get(RECOVERY_KEY);
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = () => reject(req.error || new Error('Could not read recovery data.'));
+    tx.oncomplete = () => db.close();
+    tx.onerror = () => { db.close(); reject(tx.error || new Error('Could not read recovery data.')); };
+  }));
+}
+function recoveryDelete() {
+  return openRecoveryDb().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction(RECOVERY_STORE, 'readwrite');
+    tx.objectStore(RECOVERY_STORE).delete(RECOVERY_KEY);
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error || new Error('Could not delete recovery data.')); };
+  }));
+}
+function buildRecoveryPayload(reason = 'auto') {
+  return {
+    appVersion: 'v28-crash-recovery',
+    savedAt: new Date().toISOString(),
+    reason,
+    parsedEntries: [...parsed.entries()],
+    seenEntries: [...seen.entries()],
+    parseDiagnostics
+  };
+}
+async function persistRecovery(reason = 'auto') {
+  if (!parsed.size && !parseDiagnostics.length) return;
+  try {
+    await recoveryPut(buildRecoveryPayload(reason));
+    updateRecoveryPanel(await recoveryGet());
+  } catch (e) {
+    log('[WARN] Could not write crash-recovery checkpoint: ' + e.message);
+  }
+}
+function scheduleRecoverySave(reason = 'auto') {
+  clearTimeout(recoveryWriteTimer);
+  recoveryWriteTimer = setTimeout(() => {
+    persistRecovery(reason).catch(e => log('[WARN] Recovery save failed: ' + e.message));
+  }, 250);
+}
+function updateRecoveryPanel(payload = null) {
+  if (!els.recoveryPanel || !els.recoveryStatus) return;
+  if (!payload || (!payload.parsedEntries?.length && !payload.parseDiagnostics?.length)) {
+    els.recoveryPanel.hidden = true;
+    els.recoveryStatus.textContent = 'No recovery checkpoint found.';
+    return;
+  }
+  const savedAt = payload.savedAt ? new Date(payload.savedAt).toLocaleString() : 'unknown time';
+  const snapshotCount = payload.parsedEntries?.length || 0;
+  els.recoveryPanel.hidden = false;
+  els.recoveryStatus.textContent = `Saved checkpoint found: ${snapshotCount} captured snapshot(s), saved ${savedAt}.`;
+}
+async function checkRecoveryOnLoad() {
+  try {
+    updateRecoveryPanel(await recoveryGet());
+  } catch (e) {
+    if (els.recoveryPanel && els.recoveryStatus) {
+      els.recoveryPanel.hidden = false;
+      els.recoveryStatus.textContent = 'Recovery storage is unavailable: ' + e.message;
+    }
+  }
+}
+async function recoverPreviousCapture() {
+  const payload = await recoveryGet();
+  if (!payload) {
+    log('[INFO] No recovery checkpoint found.');
+    updateRecoveryPanel(null);
+    return;
+  }
+  parsed = new Map(payload.parsedEntries || []);
+  seen = new Map(payload.seenEntries || []);
+  parseDiagnostics = payload.parseDiagnostics || [];
+  latestZipBlob = null;
+  els.downloadBtn.disabled = true;
+  log(`[OK] Recovered ${parsed.size} captured snapshot(s) from browser recovery storage.`);
+  await updateExport();
+  updateRecoveryPanel(payload);
+}
+async function discardRecovery() {
+  await recoveryDelete();
+  updateRecoveryPanel(null);
+  log('[INFO] Deleted saved crash-recovery checkpoint.');
+}
 
 function log(msg) {
   els.log.textContent += msg + '\n';
@@ -153,13 +273,14 @@ function toggleWakeLock() {
   else requestWakeLock('manual toggle');
 }
 
-function clearCapturedData() {
+async function clearCapturedData() {
   parsed.clear();
   parseDiagnostics = [];
   latestZipBlob = null;
   els.downloadBtn.disabled = true;
   setStats({ snapshots: 0, states: 0, provinces: 0, carriedForwardControllers: 0 });
-  log('[INFO] Cleared captured snapshots/diagnostics. Existing seen-file markers were kept, so watch mode will still ignore saves that were already present.');
+  try { await recoveryDelete(); updateRecoveryPanel(null); } catch (e) { log('[WARN] Could not delete recovery checkpoint: ' + e.message); }
+  log('[INFO] Cleared captured snapshots/diagnostics and deleted the saved recovery checkpoint. Existing seen-file markers were kept, so watch mode will still ignore saves that were already present.');
 }
 
 async function selectFolder() {
@@ -176,6 +297,7 @@ async function selectFolder() {
   parsed.clear();
   parseDiagnostics = [];
   latestZipBlob = null;
+  try { await recoveryDelete(); updateRecoveryPanel(null); } catch (_) {}
   els.parseBtn.disabled = false;
   els.watchBtn.disabled = true;
   els.watchNewOnlyBtn.disabled = false;
@@ -215,6 +337,7 @@ async function parseFiles(files, onlyChanged = false) {
       skipped++;
       parseDiagnostics.push({ file: file.name, stage: 'read', reason: read.reason });
       log(`[WARN] Skipped ${file.name} (${read.reason})`);
+      scheduleRecoverySave('read-skip');
       continue;
     }
     const snap = read.snapshot || parseSnapshot(read.text, file.name, read.dateHint || null);
@@ -223,12 +346,14 @@ async function parseFiles(files, onlyChanged = false) {
       parseDiagnostics.push({ file: file.name, stage: 'parse', reason: snap.reason, source: read.source, diagnostics: snap.diagnostics, binaryDiagnostics: read.binaryDiagnostics });
       log(`[WARN] Skipped ${file.name} (${snap.reason}, source=${read.source})`);
       if (snap.diagnostics?.candidates?.length) log(`[INFO] Binary candidates: ${snap.diagnostics.candidates.slice(0,3).map(c => `${c.key}:${c.count}`).join(', ')}`);
+      scheduleRecoverySave('parse-skip');
       continue;
     }
     const parsedKey = snap.date ? `${snap.date}:${file.name}` : sig;
     parsed.set(parsedKey, snap);
     parseDiagnostics.push({ file: file.name, key: parsedKey, stage: 'parsed', source: read.source, date: snap.date || null, states: Object.keys(snap.states || {}).length, provinces: Object.keys(snap.provinces || {}).length, provinceOverrides: Object.keys(snap.provinceOverrides || {}).length, binaryFallback: !!snap.binaryFallback, diagnostics: snap.diagnostics, binaryDiagnostics: read.binaryDiagnostics });
     log(`[OK] Parsed ${file.name}${snap.date ? ' -> ' + snap.date : ''} (${Object.keys(snap.states || {}).length} states, ${Object.keys(snap.provinces || {}).length} raw province override entries, source=${read.source}${snap.binaryFallback ? ', inferred binary blocks' : ''})`);
+    scheduleRecoverySave('parsed-snapshot');
   }
 
   if (onlyChanged && changed === 0) {
@@ -249,7 +374,7 @@ async function updateExport() {
   const diagnostics = {
     generatedAt: new Date().toISOString(),
     source: 'HOI4 Game Log Parser Web',
-    parserVersion: 'v26-usability-layout-stop-clear-controls-full-province-snapshots-fuwg-states-wakelock',
+    parserVersion: 'v28-crash-recovery-full-province-snapshots-fuwg-states-wakelock',
     ...timeline.diagnostics,
     dateOverride,
     parsedFiles: parseDiagnostics.filter(d => d.stage === 'parsed').map(d => d.file),
@@ -266,6 +391,7 @@ async function updateExport() {
   els.downloadBtn.disabled = timeline.snapshots.length === 0 && parseDiagnostics.length === 0;
   setStats(timeline.diagnostics);
   log(`[OK] Updated export: ${timeline.diagnostics.snapshots} snapshots, ${timeline.diagnostics.states} states, ${timeline.diagnostics.provinces} effective provinces, ${timeline.diagnostics.rawProvinceOverrideTotal || 0} raw province override entries, ${timeline.diagnostics.carriedForwardControllers} carried-forward state controllers.`);
+  scheduleRecoverySave('export-updated');
   if (timeline.snapshots.length) {
     const dates = timeline.snapshots.map(s => s.date || 'NO_DATE');
     const preview = dates.length <= 12 ? dates.join(', ') : `${dates.slice(0, 6).join(', ')} ... ${dates.slice(-6).join(', ')}`;
@@ -353,7 +479,10 @@ els.watchNewOnlyBtn.addEventListener('click', async () => {
   }
 });
 els.downloadBtn.addEventListener('click', downloadZip);
-els.clearBtn.addEventListener('click', clearCapturedData);
+els.clearBtn.addEventListener('click', () => clearCapturedData().catch(e => log('[ERROR] ' + e.message)));
+els.recoverBtn?.addEventListener('click', () => recoverPreviousCapture().catch(e => log('[ERROR] ' + e.message)));
+els.discardRecoveryBtn?.addEventListener('click', () => discardRecovery().catch(e => log('[ERROR] ' + e.message)));
+checkRecoveryOnLoad();
 els.wakeLockBtn.addEventListener('click', toggleWakeLock);
 document.addEventListener('visibilitychange', () => {
   if (wakeLockWanted && document.visibilityState === 'visible' && !wakeLock) {
@@ -368,7 +497,7 @@ els.latestDateOverride.addEventListener('change', () => {
 });
 els.fileFallback.addEventListener('change', async (e) => {
   els.log.textContent = '';
-  log('[INFO] Version v26 usability layout + stop/clear controls loaded.');
+  log('[INFO] Version v28 crash recovery + host checklist loaded.');
   fallbackFiles = filterAutosaveFiles([...e.target.files].filter(f => /\.hoi4$/i.test(f.name)), 'folder fallback').sort((a,b)=>a.name.localeCompare(b.name));
   dirHandle = null;
   seen.clear();
@@ -384,7 +513,7 @@ els.fileFallback.addEventListener('change', async (e) => {
 
 els.folderFallback.addEventListener('change', async (e) => {
   els.log.textContent = '';
-  log('[INFO] Version v26 usability layout + stop/clear controls loaded.');
+  log('[INFO] Version v28 crash recovery + host checklist loaded.');
   fallbackFiles = filterAutosaveFiles([...e.target.files].filter(f => /\.hoi4$/i.test(f.name)), 'folder fallback').sort((a,b)=>a.name.localeCompare(b.name));
   dirHandle = null;
   seen.clear();

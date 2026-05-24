@@ -4,14 +4,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>HOI4 Game Log Parser</title>
-  <link rel="stylesheet" href="src/styles.css?v=27" />
+  <link rel="stylesheet" href="src/styles.css?v=28" />
 </head>
 <body>
   <main class="wrap">
     <header>
       <h1>HOI4 Game Log Parser</h1>
       <p class="lead">Select a Hearts of Iron IV save folder, watch for autosaves, then export a game-log zip for rendering.</p>
-      <p class="muted"><strong>Version:</strong> v27 host checklist update</p>
+      <p class="muted"><strong>Version:</strong> v28 crash recovery + wake lock</p>
     </header>
 
     <section class="card setup">
@@ -31,6 +31,18 @@
         <code>Documents\Paradox Interactive\Hearts of Iron IV\save games</code>
       </div>
       <p class="muted">The parser only reads files/folders the user manually selects. It runs locally in the browser and exports full FUWG province snapshots using the embedded FUWG state/province mapping.</p>
+    </section>
+
+
+
+    <section id="recoveryPanel" class="card recovery" hidden>
+      <h2>Crash recovery</h2>
+      <p id="recoveryStatus" class="muted">No recovery checkpoint found.</p>
+      <div class="controls recoveryControls">
+        <button id="recoverBtn" class="mainBtn">Recover previous capture</button>
+        <button id="discardRecoveryBtn" class="mainBtn dangerBtn">Discard saved recovery</button>
+      </div>
+      <p class="muted">The parser now saves a checkpoint in this browser after snapshots are captured. If the tab crashes, reopen the page and use this recovery box before starting a new session.</p>
     </section>
 
     <section class="card actionPanel">
@@ -82,6 +94,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-  <script type="module" src="src/app.js?v=26"></script>
+  <script type="module" src="src/app.js?v=28"></script>
 </body>
 </html>

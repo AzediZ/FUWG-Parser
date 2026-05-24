@@ -37,3 +37,8 @@ pre { min-height:260px; max-height:520px; overflow:auto; margin:0; background:#0
 details.advanced summary { cursor:pointer; font-weight:800; color:#e8edf7; }
 .advancedControls { margin-top:14px; }
 @media (max-width:800px){ .mainBtn{ width:100%; } .watchStatus > * { width:100%; } }
+
+.recovery { border-color: #7f6b2e; background: #241f13; }
+.recoveryControls { margin-top: 10px; }
+.dangerBtn { border-color: #8c3d3d; }
+.dangerBtn:hover { border-color: #d85c5c; }
