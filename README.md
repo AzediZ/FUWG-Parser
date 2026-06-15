@@ -1,47 +1,37 @@
 # HOI4 Game Log Parser Web
 
-Static, GitHub Pages-ready HOI4/FUWG game-log parser/exporter.
+Static browser-based parser for FUWG/HOI4 game-log animation exports.
 
-## Quick host instructions
+## Host checklist
 
-1. Before the game, make sure the host keeps at least **3 autosaves** / **debug_saves = 3 or higher**. One overwriting autosave can miss large chunks of history.
-2. Open the parser in **Chrome or Edge**. GitHub Pages is preferred.
+1. Before the game, make sure the host keeps at least **3 autosaves** / `debug_saves = 3` or higher.
+2. Open this page in **Chrome or Edge**.
 3. Delete all current autosaves. Normal/manual saves are fine to keep.
 4. Host the game as normal.
-5. Click **Select save folder**.
-6. Select:
+5. Click **Select save folder** and choose `Documents\Paradox Interactive\Hearts of Iron IV\save games`.
+6. When the game is ready to un-pause and start, click **Watch new saves only**.
+7. At the end, click **Stop watching**.
+8. Click **Download gamelog export.zip** and send it for the animation render.
 
-```text
-Documents\Paradox Interactive\Hearts of Iron IV\save games
-```
+## v30 changes
 
-7. When the game is ready to un-pause and start, click **Watch new saves only**.
-8. Keep the parser tab open/visible if possible. The app tries to keep the screen awake while watching.
-9. At the end of the session, click **Stop watching**.
-10. Click **Download gamelog export.zip** and send that file for rendering (currently Azedi).
+- Keeps v29 crash recovery and wake lock.
+- Makes watching more stable by **not rebuilding the full province export after every autosave**.
+- Full province export is built only when downloading.
+- Adds cleaned province overrides to reduce random speckle dots in the renderer.
+- Raw override candidates are still kept in `snapshot.provinceOverrides` for debugging.
+- Accepted/rejected override decisions are stored in each snapshot.
 
-## What it exports
+## Output
 
-`gamelog export.zip` includes full effective FUWG province snapshots. Each province uses a save-level province override when present, otherwise it inherits its parent state controller from the embedded FUWG state/province mapping.
+`gamelog export.zip` contains:
 
-## Hosting
+- `game.json`
+- `snapshots.json`
+- `snapshots_compact.json`
+- `state_controller_timeline.json`
+- `province_controller_timeline.json`
+- `province_state_map.json`
+- `parse_diagnostics.json`
 
-Upload the repo contents to GitHub and enable GitHub Pages from the repo root. No build step is required.
-
-## Notes
-
-The parser only reads files/folders the user manually selects. It ignores normal/manual saves in live folder mode and watches `autosave.hoi4`, `autosave_1.hoi4`, `autosave_2.hoi4`, etc.
-
-Version: v29 crash recovery + wake lock.
-
-
-## Crash recovery
-
-Version v29 saves a recovery checkpoint in the browser using IndexedDB after snapshots are captured. If the tab crashes, reopen the parser page before starting a new session. If a checkpoint is found, use **Recover previous capture**, then **Download gamelog export.zip**.
-
-Use **Discard saved recovery** only after you have exported the recovered game or when you want to start clean.
-
-
-## v29 recovery note
-
-The crash recovery box is now always visible. Use **Recover previous capture** after reopening the page if the browser or tab crashes.
+Use `snapshots.json -> provinces` for the cleaned effective province map.

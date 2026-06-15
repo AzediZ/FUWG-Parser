@@ -35,6 +35,7 @@ let watchTimer = null;
 let wakeLock = null;
 let wakeLockWanted = false;
 let parseDiagnostics = [];
+let watchTickRunning = false;
 
 
 const RECOVERY_DB_NAME = 'hoi4-gamelog-parser-recovery-v1';
@@ -85,7 +86,7 @@ function recoveryDelete() {
 }
 function buildRecoveryPayload(reason = 'auto') {
   return {
-    appVersion: 'v29-always-visible-recovery',
+    appVersion: 'v30-stable-capture-cleaned-provinces',
     savedAt: new Date().toISOString(),
     reason,
     parsedEntries: [...parsed.entries()],
@@ -144,7 +145,7 @@ async function recoverPreviousCapture() {
   latestZipBlob = null;
   els.downloadBtn.disabled = true;
   log(`[OK] Recovered ${parsed.size} captured snapshot(s) from browser recovery storage.`);
-  await updateExport();
+  updateCaptureStatsOnly();
   updateRecoveryPanel(payload);
 }
 async function discardRecovery() {
@@ -162,6 +163,15 @@ function setStats(diag = {}) {
   els.stateCount.textContent = diag.states ?? 0;
   if (els.provinceCount) els.provinceCount.textContent = diag.provinces ?? 0;
   els.carryCount.textContent = diag.carriedForwardControllers ?? 0;
+}
+
+function updateCaptureStatsOnly() {
+  els.snapshotCount.textContent = parsed.size;
+  const latest = [...parsed.values()].at(-1);
+  els.stateCount.textContent = latest ? Object.keys(latest.states || {}).length : 0;
+  if (els.provinceCount) els.provinceCount.textContent = latest ? Object.keys(latest.provinces || {}).length : 0;
+  els.carryCount.textContent = 'export-time';
+  els.downloadBtn.disabled = parsed.size === 0 && parseDiagnostics.length === 0;
 }
 
 function isAutosaveFileName(name) {
@@ -353,7 +363,7 @@ async function parseFiles(files, onlyChanged = false) {
     const parsedKey = snap.date ? `${snap.date}:${file.name}` : sig;
     parsed.set(parsedKey, snap);
     parseDiagnostics.push({ file: file.name, key: parsedKey, stage: 'parsed', source: read.source, date: snap.date || null, states: Object.keys(snap.states || {}).length, provinces: Object.keys(snap.provinces || {}).length, provinceOverrides: Object.keys(snap.provinceOverrides || {}).length, binaryFallback: !!snap.binaryFallback, diagnostics: snap.diagnostics, binaryDiagnostics: read.binaryDiagnostics });
-    log(`[OK] Parsed ${file.name}${snap.date ? ' -> ' + snap.date : ''} (${Object.keys(snap.states || {}).length} states, ${Object.keys(snap.provinces || {}).length} raw province override entries, source=${read.source}${snap.binaryFallback ? ', inferred binary blocks' : ''})`);
+    log(`[OK] Parsed ${file.name}${snap.date ? ' -> ' + snap.date : ''} (${Object.keys(snap.states || {}).length} states, ${Object.keys(snap.provinces || {}).length} raw province override candidates, source=${read.source}${snap.binaryFallback ? ', inferred binary blocks' : ''})`);
     scheduleRecoverySave('parsed-snapshot');
   }
 
@@ -362,7 +372,11 @@ async function parseFiles(files, onlyChanged = false) {
     return;
   }
 
-  await updateExport();
+  updateCaptureStatsOnly();
+  latestZipBlob = null;
+  if (changed > 0) {
+    log(`[INFO] Capture cache now has ${parsed.size} snapshot(s). Full province export will be built when you click Download.`);
+  }
   if (skipped && parsed.size === 0) {
     log('[NOTE] No state snapshots were recovered yet. You can still download gamelog export.zip for diagnostics.');
   }
@@ -375,7 +389,7 @@ async function updateExport() {
   const diagnostics = {
     generatedAt: new Date().toISOString(),
     source: 'HOI4 Game Log Parser Web',
-    parserVersion: 'v29-always-visible-recovery-full-province-snapshots-fuwg-states-wakelock',
+    parserVersion: 'v30-stable-capture-cleaned-province-overrides-wakelock',
     ...timeline.diagnostics,
     dateOverride,
     parsedFiles: parseDiagnostics.filter(d => d.stage === 'parsed').map(d => d.file),
@@ -391,8 +405,7 @@ async function updateExport() {
   });
   els.downloadBtn.disabled = timeline.snapshots.length === 0 && parseDiagnostics.length === 0;
   setStats(timeline.diagnostics);
-  log(`[OK] Updated export: ${timeline.diagnostics.snapshots} snapshots, ${timeline.diagnostics.states} states, ${timeline.diagnostics.provinces} effective provinces, ${timeline.diagnostics.rawProvinceOverrideTotal || 0} raw province override entries, ${timeline.diagnostics.carriedForwardControllers} carried-forward state controllers.`);
-  scheduleRecoverySave('export-updated');
+  log(`[OK] Built export: ${timeline.diagnostics.snapshots} snapshots, ${timeline.diagnostics.states} states, ${timeline.diagnostics.provinces} effective provinces, ${timeline.diagnostics.rawProvinceOverrideTotal || 0} raw overrides, ${timeline.diagnostics.acceptedProvinceOverrideTotal || 0} accepted, ${timeline.diagnostics.rejectedProvinceOverrideTotal || 0} rejected speckles, ${timeline.diagnostics.carriedForwardControllers} carried-forward state controllers.`);
   if (timeline.snapshots.length) {
     const dates = timeline.snapshots.map(s => s.date || 'NO_DATE');
     const preview = dates.length <= 12 ? dates.join(', ') : `${dates.slice(0, 6).join(', ')} ... ${dates.slice(-6).join(', ')}`;
@@ -406,8 +419,17 @@ async function parseNow() {
 }
 
 async function tickWatch() {
-  const files = await collectFilesFromFolder();
-  await parseFiles(files, true);
+  if (watchTickRunning) {
+    log('[WARN] Previous watch check is still running; skipping this tick to avoid overlap.');
+    return;
+  }
+  watchTickRunning = true;
+  try {
+    const files = await collectFilesFromFolder();
+    await parseFiles(files, true);
+  } finally {
+    watchTickRunning = false;
+  }
 }
 
 async function markExistingAsSeen() {
@@ -453,7 +475,11 @@ function stopWatch() {
   releaseWakeLock(false).catch(() => {});
 }
 
-function downloadZip() {
+async function downloadZip() {
+  if (!latestZipBlob) {
+    log('[INFO] Building full province export now. The page may pause briefly on long games.');
+    await updateExport();
+  }
   if (!latestZipBlob) return;
   const a = document.createElement('a');
   a.href = URL.createObjectURL(latestZipBlob);
@@ -479,7 +505,7 @@ els.watchNewOnlyBtn.addEventListener('click', async () => {
     log('[ERROR] ' + e.message);
   }
 });
-els.downloadBtn.addEventListener('click', downloadZip);
+els.downloadBtn.addEventListener('click', () => downloadZip().catch(e => log('[ERROR] ' + e.message))); 
 els.clearBtn.addEventListener('click', () => clearCapturedData().catch(e => log('[ERROR] ' + e.message)));
 els.recoverBtn?.addEventListener('click', () => recoverPreviousCapture().catch(e => log('[ERROR] ' + e.message)));
 els.discardRecoveryBtn?.addEventListener('click', () => discardRecovery().catch(e => log('[ERROR] ' + e.message)));
@@ -494,11 +520,12 @@ document.addEventListener('visibilitychange', () => {
 });
 updateWakeLockUi();
 els.latestDateOverride.addEventListener('change', () => {
-  if (parsed.size) updateExport().catch(e => log('[ERROR] ' + e.message));
+  latestZipBlob = null;
+  if (parsed.size) log('[INFO] Latest-date override changed. It will be applied next time you download the export.');
 });
 els.fileFallback.addEventListener('change', async (e) => {
   els.log.textContent = '';
-  log('[INFO] Version v29 always-visible recovery + host checklist loaded.');
+  log('[INFO] Version v30 stable capture + cleaned province overrides loaded.');
   fallbackFiles = filterAutosaveFiles([...e.target.files].filter(f => /\.hoi4$/i.test(f.name)), 'folder fallback').sort((a,b)=>a.name.localeCompare(b.name));
   dirHandle = null;
   seen.clear();
@@ -514,7 +541,7 @@ els.fileFallback.addEventListener('change', async (e) => {
 
 els.folderFallback.addEventListener('change', async (e) => {
   els.log.textContent = '';
-  log('[INFO] Version v29 always-visible recovery + host checklist loaded.');
+  log('[INFO] Version v30 stable capture + cleaned province overrides loaded.');
   fallbackFiles = filterAutosaveFiles([...e.target.files].filter(f => /\.hoi4$/i.test(f.name)), 'folder fallback').sort((a,b)=>a.name.localeCompare(b.name));
   dirHandle = null;
   seen.clear();

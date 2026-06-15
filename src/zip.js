@@ -7,5 +7,6 @@ export async function makeExportZip(payload) {
   zip.file('province_controller_timeline.json', JSON.stringify(payload.provinceControllerTimeline || {}, null, 2));
   zip.file('province_state_map.json', JSON.stringify(payload.provinceStateMap || {}, null, 2));
   zip.file('parse_diagnostics.json', JSON.stringify(payload.diagnostics, null, 2));
+  zip.file('README_EXPORT.txt', 'Use snapshots.json -> provinces for the cleaned effective province controller map. Raw sparse province candidates are kept per snapshot as provinceOverrides; acceptedProvinceOverrides and rejectedProvinceOverrides show the speckle filter decisions.');
   return await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
 }

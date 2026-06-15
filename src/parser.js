@@ -195,19 +195,30 @@ export function buildTimeline(rawSnapshots) {
   // override should inherit the controller of its parent state for that same snapshot.
   const knownStates = new Set(Object.keys(FUWG_STATE_TO_PROVINCES));
   const knownProvinces = new Set(Object.keys(FUWG_PROVINCE_TO_STATE));
-  for (const s of ordered) {
-    Object.keys(s.states || {}).forEach(id => knownStates.add(id));
-    Object.keys(s.provinces || {}).forEach(id => knownProvinces.add(id));
+  for (const snap of ordered) {
+    Object.keys(snap.states || {}).forEach(id => knownStates.add(id));
+    Object.keys(snap.provinces || {}).forEach(id => {
+      if (FUWG_PROVINCE_TO_STATE[id]) knownProvinces.add(id);
+    });
   }
+
+  const stateIds = [...knownStates].sort((a, b) => Number(a) - Number(b));
+  const provinceIds = [...knownProvinces].sort((a, b) => Number(a) - Number(b));
+  const validProvinceSet = new Set(provinceIds);
+
+  const isValidTag = tag => typeof tag === 'string' && /^[A-Z0-9_]{3}$/.test(tag) && !['YES','NOT','AND','ADD','TAG','DAY','NUL'].includes(tag);
 
   const lastStates = {};
   let carriedForwardControllers = 0;
   let effectiveProvinceFallbacks = 0;
   let rawProvinceOverrideTotal = 0;
-  const stateIds = [...knownStates].sort((a, b) => Number(a) - Number(b));
-  const provinceIds = [...knownProvinces].sort((a, b) => Number(a) - Number(b));
+  let acceptedProvinceOverrideTotal = 0;
+  let rejectedProvinceOverrideTotal = 0;
+  let invalidProvinceOverrideTotal = 0;
 
-  const snapshots = ordered.map(s => {
+  // First pass: build full state fallback per snapshot and keep only raw overrides that
+  // reference actual FUWG provinces with plausible country tags.
+  const prepped = ordered.map(s => {
     const fullStates = {};
     for (const id of stateIds) {
       const current = (s.states || {})[id];
@@ -222,21 +233,79 @@ export function buildTimeline(rawSnapshots) {
       }
     }
 
-    const provinceOverrides = {};
+    const rawValidOverrides = {};
+    const invalidOverrides = {};
     for (const [id, controller] of Object.entries(s.provinces || {})) {
-      if (controller && controller !== 'NUL') provinceOverrides[id] = controller;
+      if (!controller || controller === 'NUL') continue;
+      if (!validProvinceSet.has(id) || !isValidTag(controller)) {
+        invalidOverrides[id] = controller;
+        invalidProvinceOverrideTotal++;
+        continue;
+      }
+      rawValidOverrides[id] = controller;
     }
-    rawProvinceOverrideTotal += Object.keys(provinceOverrides).length;
+    rawProvinceOverrideTotal += Object.keys(rawValidOverrides).length;
+    return { source: s, fullStates, rawValidOverrides, invalidOverrides };
+  });
+
+  function sameProvinceNearby(index, provinceId, controller) {
+    const prev = prepped[index - 1]?.rawValidOverrides?.[provinceId];
+    const next = prepped[index + 1]?.rawValidOverrides?.[provinceId];
+    return prev === controller || next === controller;
+  }
+
+  function groupedOverrideCounts(rawValidOverrides) {
+    const counts = new Map();
+    for (const [provinceId, controller] of Object.entries(rawValidOverrides)) {
+      const stateId = FUWG_PROVINCE_TO_STATE[provinceId] || 'unknown';
+      const key = `${stateId}|${controller}`;
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+    return counts;
+  }
+
+  const snapshots = prepped.map((item, index) => {
+    const s = item.source;
+    const groupCounts = groupedOverrideCounts(item.rawValidOverrides);
+    const acceptedProvinceOverrides = {};
+    const rejectedProvinceOverrides = {};
+
+    for (const [provinceId, controller] of Object.entries(item.rawValidOverrides)) {
+      const stateId = FUWG_PROVINCE_TO_STATE[provinceId];
+      const fallback = stateId ? item.fullStates[stateId] : null;
+
+      // If the override matches the state fallback, it is harmless but unnecessary.
+      // Keep it as accepted for diagnostics, but the rendered result is unchanged.
+      if (fallback === controller) {
+        acceptedProvinceOverrides[provinceId] = controller;
+        continue;
+      }
+
+      const sameStateSameController = groupCounts.get(`${stateId}|${controller}`) || 0;
+      const persistsNearby = sameProvinceNearby(index, provinceId, controller);
+
+      // False binary province hits tend to be one-off isolated speckles. Real frontlines
+      // generally appear as several provinces in a state or persist over consecutive saves.
+      // This is deliberately conservative: raw overrides are preserved for debugging.
+      if (sameStateSameController >= 2 || persistsNearby) {
+        acceptedProvinceOverrides[provinceId] = controller;
+      } else {
+        rejectedProvinceOverrides[provinceId] = controller;
+      }
+    }
+
+    acceptedProvinceOverrideTotal += Object.keys(acceptedProvinceOverrides).length;
+    rejectedProvinceOverrideTotal += Object.keys(rejectedProvinceOverrides).length;
 
     const effectiveProvinces = {};
     for (const provinceId of provinceIds) {
-      const override = provinceOverrides[provinceId];
+      const override = acceptedProvinceOverrides[provinceId];
       if (override) {
         effectiveProvinces[provinceId] = override;
         continue;
       }
       const stateId = FUWG_PROVINCE_TO_STATE[provinceId];
-      const fallback = stateId ? fullStates[stateId] : null;
+      const fallback = stateId ? item.fullStates[stateId] : null;
       effectiveProvinces[provinceId] = fallback || 'NUL';
       effectiveProvinceFallbacks++;
     }
@@ -244,9 +313,12 @@ export function buildTimeline(rawSnapshots) {
     return {
       date: s.date,
       file: s.fileName,
-      states: fullStates,
+      states: item.fullStates,
       provinces: effectiveProvinces,
-      provinceOverrides
+      provinceOverrides: item.rawValidOverrides,
+      acceptedProvinceOverrides,
+      rejectedProvinceOverrides,
+      invalidProvinceOverrides: item.invalidOverrides
     };
   });
 
@@ -270,9 +342,13 @@ export function buildTimeline(rawSnapshots) {
       states: knownStates.size,
       provinces: knownProvinces.size,
       rawProvinceOverrideTotal,
+      acceptedProvinceOverrideTotal,
+      rejectedProvinceOverrideTotal,
+      invalidProvinceOverrideTotal,
       effectiveProvinceFallbacks,
       carriedForwardControllers,
       carriedForwardProvinceControllers: 0,
+      provinceCleaning: 'reject one-off isolated sparse province overrides; keep raw overrides in snapshot.provinceOverrides',
       provinceMap: FUWG_PROVINCE_MAP_META
     }
   };
